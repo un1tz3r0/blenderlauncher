@@ -2,7 +2,7 @@
 
 A modern GTK4 and Libadwaita application for downloading, extracting, and launching Blender daily builds.
 
-![Blender Launcher Icon](blenderlauncher.svg)
+![Blender Launcher Icon](blenderlauncher_large.svg)
 
 ## Features
 
@@ -26,17 +26,44 @@ Ensure you have the following system dependencies installed:
 - `tar` (for extraction)
 - `wget` (optional, used by the CLI tool)
 
-### Using `uv` (Recommended)
+### Running, from source, with `uv` (Recommended)
+
+This will run **blenderlauncher** without installing anything, right from the cloned source tree (this repo).
+
+First, clone the repo and `cd` to it:
+
+```bash
+git clone https://github.com/un1tz3r0/blenderlauncher
+cd blenderlauncher
+```
+
+Then make sure your virtual environment is setup and launch the program:
 
 ```bash
 uv sync
 uv run blenderlauncher
 ```
 
+### Installing on desktop linux distros
+
+Use `install-desktop.sh`, it will install the python sources, icons and a `.desktop` file so that the program appears in your desktop environment's applications menu.
+
+```bash
+bash install-desktop.sh
+```
+
 ### Manual Installation
 
 ```bash
 pip install .
+```
+
+### Flatpak
+
+You can build a flatpak package that can be installed with `flatpak install` using the `build-flatpak.sh` script.
+
+```bash
+bash build-flatpak.sh
 ```
 
 ## Usage
