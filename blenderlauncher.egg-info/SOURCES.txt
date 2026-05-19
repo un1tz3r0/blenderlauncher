@@ -1,0 +1,15 @@
+LICENSE
+README.md
+pyproject.toml
+blenderlauncher/__init__.py
+blenderlauncher/__main__.py
+blenderlauncher/app.py
+blenderlauncher/core.py
+blenderlauncher/settings.py
+blenderlauncher/style.css
+blenderlauncher.egg-info/PKG-INFO
+blenderlauncher.egg-info/SOURCES.txt
+blenderlauncher.egg-info/dependency_links.txt
+blenderlauncher.egg-info/entry_points.txt
+blenderlauncher.egg-info/requires.txt
+blenderlauncher.egg-info/top_level.txt

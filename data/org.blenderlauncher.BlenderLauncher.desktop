@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Blender Launcher
+Comment=Download, unpack and launch Blender daily builds
+Exec=blenderlauncher
+Icon=org.blenderlauncher.BlenderLauncher
+Terminal=false
+Type=Application
+Categories=Graphics;3DGraphics;Development;
+Keywords=blender;3d;modeling;daily;nightly;build;
+StartupNotify=true
+StartupWMClass=org.blenderlauncher.BlenderLauncher

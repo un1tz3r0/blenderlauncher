@@ -1,0 +1,13 @@
+Metadata-Version: 2.4
+Name: blenderlauncher
+Version: 0.1.0
+Summary: GTK4/Adwaita GUI for downloading and launching Blender daily builds
+Requires-Python: >=3.11
+License-File: LICENSE
+Requires-Dist: aiohttp>=3.9
+Requires-Dist: aiofiles>=23.0
+Requires-Dist: beautifulsoup4>=4.12
+Requires-Dist: lxml>=5.0
+Requires-Dist: yarl>=1.9
+Requires-Dist: PyGObject>=3.46
+Dynamic: license-file

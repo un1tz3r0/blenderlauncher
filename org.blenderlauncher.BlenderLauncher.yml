@@ -1,0 +1,47 @@
+app-id: org.blenderlauncher.BlenderLauncher
+runtime: org.gnome.Platform
+runtime-version: '48'
+sdk: org.gnome.Sdk
+command: blenderlauncher
+
+finish-args:
+  # display access
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  # GPU acceleration (for launching Blender)
+  - --device=dri
+  # network access (to download builds from blender.org)
+  - --share=network
+  # filesystem access to Downloads directory
+  - --filesystem=xdg-download
+  # access to config directory
+  - --filesystem=xdg-config/blenderlauncher:create
+  # allow launching Blender as a subprocess
+  - --talk-name=org.freedesktop.Flatpak
+
+modules:
+  # all Python dependencies, installed via pip from PyPI at build time
+  - name: python-deps
+    buildsystem: simple
+    build-options:
+      build-args:
+        - --share=network
+    build-commands:
+      - pip3 install --no-build-isolation --prefix=/app
+        aiohttp aiofiles beautifulsoup4 lxml yarl
+    sources: []
+
+  - name: blenderlauncher
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-build-isolation --prefix=/app .
+      - install -Dm644 data/org.blenderlauncher.BlenderLauncher.desktop
+        /app/share/applications/org.blenderlauncher.BlenderLauncher.desktop
+      - install -Dm644 data/org.blenderlauncher.BlenderLauncher.metainfo.xml
+        /app/share/metainfo/org.blenderlauncher.BlenderLauncher.metainfo.xml
+      - install -Dm644 data/icons/hicolor/scalable/apps/org.blenderlauncher.BlenderLauncher.svg
+        /app/share/icons/hicolor/scalable/apps/org.blenderlauncher.BlenderLauncher.svg
+    sources:
+      - type: dir
+        path: .

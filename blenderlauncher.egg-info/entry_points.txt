@@ -1,0 +1,5 @@
+[console_scripts]
+blenderlauncher = blenderlauncher.__main__:main
+
+[gui_scripts]
+blenderlauncher-gui = blenderlauncher.__main__:main

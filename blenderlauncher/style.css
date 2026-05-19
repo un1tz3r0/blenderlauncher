@@ -1,0 +1,188 @@
+/* Blender Launcher — Custom Adwaita CSS theme */
+/* Blender's brand orange: #EA7600 */
+
+/* ---- Progress bars: orange gradient with glow ---- */
+progressbar > trough {
+    min-height: 10px;
+    border-radius: 6px;
+    background-color: alpha(@window_fg_color, 0.08);
+}
+
+progressbar > trough > progress {
+    min-height: 10px;
+    border-radius: 6px;
+    background-image: linear-gradient(to right, #D45D00, #EA7600, #F59E3F);
+    box-shadow: 0 0 6px alpha(#EA7600, 0.5);
+    transition: all 300ms ease;
+}
+
+progressbar text {
+    font-size: 0.85em;
+    font-weight: 600;
+    color: @window_fg_color;
+    margin-top: 2px;
+}
+
+/* ---- Build cards ---- */
+.build-row {
+    border-radius: 12px;
+    padding: 4px;
+    transition: background-color 200ms ease, box-shadow 200ms ease;
+}
+
+.build-row:hover {
+    background-color: alpha(@accent_bg_color, 0.06);
+}
+
+/* ---- Action buttons: Blender orange ---- */
+.build-row .suggested-action {
+    background-image: linear-gradient(to bottom, #EA7600, #D45D00);
+    color: white;
+    font-weight: 600;
+    border-radius: 8px;
+    padding: 6px 16px;
+    min-height: 32px;
+    box-shadow: 0 1px 3px alpha(#000, 0.2);
+    transition: all 150ms ease;
+}
+
+.build-row .suggested-action:hover {
+    background-image: linear-gradient(to bottom, #F59E3F, #EA7600);
+    box-shadow: 0 2px 6px alpha(#EA7600, 0.4);
+}
+
+.build-row .suggested-action:active {
+    background-image: linear-gradient(to bottom, #D45D00, #B84A00);
+    box-shadow: none;
+}
+
+.build-row .suggested-action:disabled {
+    background-image: none;
+    background-color: alpha(@window_fg_color, 0.12);
+    color: alpha(@window_fg_color, 0.4);
+    box-shadow: none;
+}
+
+/* ---- Delete button ---- */
+.build-row .destructive-flat:hover {
+    background-color: alpha(@error_color, 0.12);
+}
+
+/* ---- Status badges ---- */
+.badge-alpha,
+.badge-beta,
+.badge-stable,
+.badge-candidate,
+.badge-patch {
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: 0.8em;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+
+.badge-stable {
+    background-color: alpha(#2ECC71, 0.18);
+    color: #27AE60;
+}
+
+.badge-beta {
+    background-color: alpha(#F1C40F, 0.2);
+    color: #B7950B;
+}
+
+.badge-alpha {
+    background-color: alpha(#E74C3C, 0.18);
+    color: #C0392B;
+}
+
+.badge-candidate {
+    background-color: alpha(#3D85C6, 0.15);
+    color: #3D85C6;
+}
+
+.badge-patch {
+    background-color: alpha(#9B59B6, 0.18);
+    color: #8E44AD;
+}
+
+/* ---- Branch accent strip on build rows ---- */
+.build-row.branch-accent-stable {
+    box-shadow: inset 4px 0 0 0 #2ECC71;
+}
+
+.build-row.branch-accent-beta {
+    box-shadow: inset 4px 0 0 0 #F1C40F;
+}
+
+.build-row.branch-accent-alpha {
+    box-shadow: inset 4px 0 0 0 #E74C3C;
+}
+
+.build-row.branch-accent-candidate {
+    box-shadow: inset 4px 0 0 0 #3D85C6;
+}
+
+.build-row.branch-accent-patch {
+    box-shadow: inset 4px 0 0 0 #9B59B6;
+}
+
+/* ---- Branch filter bar overlay on splash ---- */
+.branch-filter-bar {
+    background-color: alpha(@window_bg_color, 0.85);
+    border-radius: 10px;
+    padding: 4px 10px;
+    box-shadow: 0 1px 4px alpha(#000, 0.15);
+}
+
+/* ---- Status icons ---- */
+.status-ready {
+    color: #2ECC71;
+}
+
+.status-downloaded {
+    color: #EA7600;
+}
+
+.status-remote {
+    color: alpha(@window_fg_color, 0.4);
+}
+
+/* ---- Banner / splash area ---- */
+.splash-banner {
+    padding: 16px 24px;
+    margin-bottom: 0;
+}
+
+.splash-banner > image {
+    -gtk-icon-size: 48px;
+}
+
+/* ---- Version name ---- */
+.build-name {
+    font-weight: 600;
+    font-size: 1.0em;
+}
+
+/* ---- Progress detail text ---- */
+.progress-detail {
+    font-family: monospace;
+    font-size: 0.82em;
+}
+
+/* ---- Pulsing animation for active downloads ---- */
+@keyframes pulse-glow {
+    0%   { box-shadow: 0 0 4px alpha(#EA7600, 0.3); }
+    50%  { box-shadow: 0 0 12px alpha(#EA7600, 0.6); }
+    100% { box-shadow: 0 0 4px alpha(#EA7600, 0.3); }
+}
+
+.build-row.active-download {
+    animation: pulse-glow 2s ease-in-out infinite;
+    border: 1px solid alpha(#EA7600, 0.3);
+}
+
+/* ---- Smooth list appearance ---- */
+.build-list > * {
+    transition: opacity 200ms ease, margin 200ms ease;
+}

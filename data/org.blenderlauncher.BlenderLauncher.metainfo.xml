@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.blenderlauncher.BlenderLauncher</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Blender Launcher</name>
+  <summary>Download and launch Blender daily builds</summary>
+  <description>
+    <p>
+      Blender Launcher is a graphical tool for downloading, managing, and
+      launching Blender daily (alpha/beta) builds from blender.org.
+    </p>
+    <p>Features:</p>
+    <ul>
+      <li>Browse available daily builds with download status</li>
+      <li>One-click download, extract, and launch</li>
+      <li>Progress bars with ETA for downloads and extraction</li>
+      <li>Automatic cleanup of old versions</li>
+      <li>Manual deletion of individual builds</li>
+      <li>Automatic fallback to older builds if the latest crashes</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">org.blenderlauncher.BlenderLauncher.desktop</launchable>
+  <url type="homepage">https://github.com/un1tz3r0/blenderlauncher</url>
+  <content_rating type="oars-1.1"/>
+  <requires>
+    <display_length compare="ge">360</display_length>
+  </requires>
+  <recommends>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </recommends>
+</component>

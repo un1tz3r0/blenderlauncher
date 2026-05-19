@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "blenderlauncher"
+version = "0.1.0"
+description = "GTK4/Adwaita GUI for downloading and launching Blender daily builds"
+requires-python = ">=3.11"
+dependencies = [
+    "aiohttp>=3.9",
+    "aiofiles>=23.0",
+    "beautifulsoup4>=4.12",
+    "lxml>=5.0",
+    "yarl>=1.9",
+    "PyGObject>=3.46",
+]
+
+[project.scripts]
+blenderlauncher = "blenderlauncher.__main__:main"
+
+[project.gui-scripts]
+blenderlauncher-gui = "blenderlauncher.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["blenderlauncher*"]
+
+[tool.setuptools.package-data]
+blenderlauncher = ["style.css"]
