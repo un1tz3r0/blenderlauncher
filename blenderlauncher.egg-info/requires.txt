@@ -1,4 +1,4 @@
-aiohttp>=3.9
+aiohttp>=3.14.1
 aiofiles>=23.0
 beautifulsoup4>=4.12
 lxml>=5.0
