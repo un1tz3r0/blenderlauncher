@@ -360,6 +360,14 @@ async def download_build(url, save_path, progress_cb=None, chunk_size=1024 * 102
     save_path = pathlib.Path(save_path)
     tmp_path = save_path.with_suffix(save_path.suffix + ".part")
 
+    def cleanup_tmp():
+        try:
+            tmp_path.unlink()
+        except FileNotFoundError:
+            pass
+        except OSError:
+            pass
+
     try:
         async with aiohttp.ClientSession() as session, session.get(url) as response:
             if response.status != 200:
@@ -376,13 +384,11 @@ async def download_build(url, save_path, progress_cb=None, chunk_size=1024 * 102
                         progress_cb(downloaded, total, "Downloading...")
 
         tmp_path.rename(save_path)
-    except BaseException:
-        try:
-            tmp_path.unlink()
-        except FileNotFoundError:
-            pass
-        except OSError:
-            pass
+    except asyncio.CancelledError:
+        cleanup_tmp()
+        raise
+    except Exception:
+        cleanup_tmp()
         raise
 
     # determine date: header first, then fallback
@@ -446,8 +452,12 @@ async def extract_build(archive_path, progress_cb=None):
         if progress_cb and extracted % 50 == 0:  # throttle UI updates
             progress_cb(extracted, total_files, "Extracting...")
 
+    stderr = await proc.stderr.read()
     exitcode = await proc.wait()
     if exitcode != 0:
+        detail = stderr.decode(errors="replace").strip()
+        if detail:
+            raise Exception(f"Extraction failed: tar exited with code {exitcode}: {detail}")
         raise Exception(f"Extraction failed: tar exited with code {exitcode}")
 
     # sync the date to the extracted directory
