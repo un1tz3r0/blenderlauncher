@@ -317,7 +317,7 @@ def find_local_builds(download_dir, os_filter=None, filter_build_type=None):
             if isinstance(filter_build_type, String):
                 if build_type != filter_build_type:
                     continue
-            elif isinstance(filter_build_type, Iterable):
+            elif isinstance(filter_build_type, Iterable) and all(isinstance(s, String) for s in filter_build_type):
                 if not any(build_type == s for s in filter_build_type):
                     continue
             else:

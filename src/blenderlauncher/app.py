@@ -422,6 +422,12 @@ class BlenderLauncherWindow(Adw.ApplicationWindow):
         if not discovered.issubset(self._known_branches):
             self._known_branches |= discovered
             self._rebuild_branch_menu()
+        selected = self.config.get("branch_filter", "all")
+        if selected != "all" and selected not in discovered:
+            self.config["branch_filter"] = "all"
+            settings.save(self.config)
+            self._filter_action.set_state(GLib.Variant.new_string("all"))
+            self._update_filter_button_label()
         self._populate_list()
 
     def _populate_list(self):
