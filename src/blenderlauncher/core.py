@@ -46,6 +46,7 @@ EXTRACTABLE_SUFFIXES = (".tar.xz",)
 _PLATFORM_SUFFIX_RE = re.compile(
     r"-(?:linux|windows|darwin|macos)(?:64)?(?:[.\-][\w.\-]*)?$"
 )
+_PLATFORM_TOKEN_RE = re.compile(r"(?:^|[.\-])(linux|windows|darwin|macos)(?:64)?(?:[.\-]|$)")
 
 
 def detect_os(default="linux"):
@@ -79,6 +80,11 @@ def archive_suffixes_for_filter(os_filter):
 
 def infer_build_os_from_filename(filename):
     """Best-effort OS detection from a Blender archive filename."""
+    stem = strip_archive_suffix(filename).lower()
+    match = _PLATFORM_TOKEN_RE.search(stem)
+    if match:
+        build_os = match.group(1)
+        return "macos" if build_os == "darwin" else build_os
     for build_os, suffixes in OS_ARCHIVE_SUFFIXES.items():
         if filename.endswith(suffixes):
             return build_os
@@ -433,8 +439,13 @@ async def extract_build(archive_path, progress_cb=None):
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
-    stdout, _ = await list_proc.communicate()
-    total_files = len(stdout.decode().strip().split("\n")) if stdout else 0
+    stdout, stderr = await list_proc.communicate()
+    if list_proc.returncode != 0:
+        detail = stderr.decode(errors="replace").strip()
+        if detail:
+            raise Exception(f"Failed to inspect archive: {detail}")
+        raise Exception(f"Failed to inspect archive: tar exited with code {list_proc.returncode}")
+    total_files = sum(1 for line in stdout.decode(errors="replace").splitlines() if line.strip())
 
     if progress_cb:
         progress_cb(0, total_files, "Extracting...")

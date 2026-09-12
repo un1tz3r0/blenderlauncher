@@ -316,12 +316,14 @@ class BlenderLauncherWindow(Adw.ApplicationWindow):
 
         # refresh button
         refresh_btn = Gtk.Button(icon_name="view-refresh-symbolic")
+        refresh_btn.set_accessible_name("Refresh build list")
         refresh_btn.set_tooltip_text("Refresh build list")
         refresh_btn.connect("clicked", self._on_refresh)
         header.pack_start(refresh_btn)
 
         # preferences button
         prefs_btn = Gtk.Button(icon_name="emblem-system-symbolic")
+        prefs_btn.set_accessible_name("Preferences")
         prefs_btn.set_tooltip_text("Preferences")
         prefs_btn.connect("clicked", self._on_prefs)
         header.pack_end(prefs_btn)
