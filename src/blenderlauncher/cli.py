@@ -129,6 +129,9 @@ def print_builds(builds, os_filter):
 
 async def prepare_build(build, download_dir, allow_download=True, show_progress=True):
     """Make sure `build` is downloaded and extracted; return its extract path."""
+    if not core.can_prepare_build(build):
+        raise RuntimeError(core.unsupported_build_message(build))
+
     if not build.extracted:
         if not build.downloaded:
             if not allow_download:
@@ -172,16 +175,17 @@ def cleanup_old_builds(download_dir, keep, os_filter, protect=None):
             print(f"Warning: could not clean up {build.display_name}: {err}", file=sys.stderr)
 
 
-async def run_blender(extract_path):
+async def run_blender(extract_path, build_os=None):
     """Launch Blender and wait for it, without blocking the event loop."""
-    print(f"Running {pathlib.Path(extract_path) / 'blender'}")
+    executable = core.blender_executable_path(extract_path, build_os)
+    print(f"Running {executable}")
     sys.stdout.flush()  # keep our output ahead of the child's
-    proc = core.launch_blender(extract_path)
+    proc = core.launch_blender(extract_path, build_os)
     return await asyncio.to_thread(proc.wait)
 
 
 def build_parser(config):
-    default_os = config.get("filter_os") or core.detect_os()
+    default_os = core.normalize_supported_os_filter(config.get("filter_os"))
 
     parser = argparse.ArgumentParser(
         prog="blenderlauncher-cli",
@@ -201,7 +205,7 @@ def build_parser(config):
         "--os",
         dest="os_filter",
         default=default_os,
-        choices=sorted(core.OS_ARCHIVE_SUFFIXES),
+        choices=sorted(core.SUPPORTED_BUILD_OSES),
         help=(
             "Which platform's builds to consider "
             f"(default: {default_os}, detected from the running system)"
@@ -316,10 +320,10 @@ async def async_main(args):
                     protect=build.filename,
                 )
             if args.no_run:
-                print(pathlib.Path(extract_path) / "blender")
+                print(core.blender_executable_path(extract_path, build.build_os))
                 return 0
 
-            status = await run_blender(extract_path)
+            status = await run_blender(extract_path, build.build_os)
             if status != 0:
                 raise RuntimeError(f"Blender exited with status {status}")
             print("Blender exited normally.")

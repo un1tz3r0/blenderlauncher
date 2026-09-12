@@ -40,12 +40,14 @@ OS_ARCHIVE_SUFFIXES = {
     "windows": (".zip", ".msi", ".msix"),
     "macos": (".dmg",),
 }
+SUPPORTED_BUILD_OSES = ("linux",)
 
 EXTRACTABLE_SUFFIXES = (".tar.xz",)
 
 _PLATFORM_SUFFIX_RE = re.compile(
     r"-(?:linux|windows|darwin|macos)(?:64)?(?:[.\-][\w.\-]*)?$"
 )
+_PLATFORM_TOKEN_RE = re.compile(r"(?:^|[.\-])(linux|windows|darwin|macos)(?:64)?(?:[.\-]|$)")
 
 
 def detect_os(default="linux"):
@@ -66,6 +68,40 @@ def detect_os(default="linux"):
 def archive_suffixes_for_os(os_filter):
     """Archive suffixes published for the given OS name."""
     return OS_ARCHIVE_SUFFIXES.get(os_filter, OS_ARCHIVE_SUFFIXES["linux"])
+
+
+def normalize_supported_os_filter(os_filter=None):
+    """Clamp requested OS filters to the currently supported end-to-end platforms."""
+    if os_filter is None:
+        os_filter = detect_os()
+    if isinstance(os_filter, String):
+        return os_filter if os_filter in SUPPORTED_BUILD_OSES else SUPPORTED_BUILD_OSES[0]
+    if isinstance(os_filter, Iterable) and all(isinstance(s, String) for s in os_filter):
+        supported = tuple(s for s in os_filter if s in SUPPORTED_BUILD_OSES)
+        return supported or SUPPORTED_BUILD_OSES
+    raise TypeError("os_filter must be either None, a string, or an iterable of strings!")
+
+
+def archive_suffixes_for_filter(os_filter):
+    """Archive suffixes for one OS name or an iterable of OS names."""
+    if isinstance(os_filter, String):
+        return archive_suffixes_for_os(os_filter)
+    if isinstance(os_filter, Iterable) and all(isinstance(s, String) for s in os_filter):
+        return tuple(s for name in os_filter for s in archive_suffixes_for_os(name))
+    raise TypeError("os_filter must be either None, a string, or an iterable of strings!")
+
+
+def infer_build_os_from_filename(filename):
+    """Best-effort OS detection from a Blender archive filename."""
+    stem = strip_archive_suffix(filename).lower()
+    match = _PLATFORM_TOKEN_RE.search(stem)
+    if match:
+        build_os = match.group(1)
+        return "macos" if build_os == "darwin" else build_os
+    for build_os, suffixes in OS_ARCHIVE_SUFFIXES.items():
+        if filename.endswith(suffixes):
+            return build_os
+    return None
 
 
 def strip_archive_suffix(filename):
@@ -123,6 +159,24 @@ class BlenderBuild:
         return (ts, self.filename)
 
 
+def effective_build_os(build):
+    """Return the known OS for a build, falling back to its filename."""
+    return build.build_os or infer_build_os_from_filename(build.filename)
+
+
+def can_prepare_build(build):
+    """Whether this build can be downloaded/extracted/launched end-to-end."""
+    return effective_build_os(build) == "linux"
+
+
+def unsupported_build_message(build):
+    build_os = effective_build_os(build) or "This"
+    return (
+        f"{build_os.capitalize()} builds can be listed, but only Linux .tar.xz builds "
+        "can be prepared and launched right now."
+    )
+
+
 # callback signature: (bytes_done, bytes_total, status_text) -> None
 ProgressCallback = Callable[[int, int, str], None]
 
@@ -146,10 +200,7 @@ async def scrape_daily_builds(os_filter=None, filter_build_type=None):
     them); it defaults to the OS we are running on."""
     if os_filter is None:
         os_filter = detect_os()
-    if isinstance(os_filter, String):
-        suffixes = archive_suffixes_for_os(os_filter)
-    else:
-        suffixes = tuple(s for name in os_filter for s in archive_suffixes_for_os(name))
+    suffixes = archive_suffixes_for_filter(os_filter)
 
     async with aiohttp.ClientSession() as session:
         async with session.get("https://builder.blender.org/download/daily/") as resp:
@@ -248,10 +299,11 @@ def find_local_builds(download_dir, os_filter=None, filter_build_type=None):
         os_filter = detect_os()
     download_path = pathlib.Path(download_dir).expanduser().absolute()
     builds = {}
+    suffixes = archive_suffixes_for_filter(os_filter)
 
     archives = [
         archive
-        for suffix in archive_suffixes_for_os(os_filter)
+        for suffix in suffixes
         for archive in download_path.glob(f"blender-*{suffix}")
     ]
     for archive in archives:
@@ -278,7 +330,7 @@ def find_local_builds(download_dir, os_filter=None, filter_build_type=None):
             if isinstance(filter_build_type, String):
                 if build_type != filter_build_type:
                     continue
-            elif isinstance(filter_build_type, Iterable):
+            elif isinstance(filter_build_type, Iterable) and all(isinstance(s, String) for s in filter_build_type):
                 if not any(build_type == s for s in filter_build_type):
                     continue
             else:
@@ -288,6 +340,7 @@ def find_local_builds(download_dir, os_filter=None, filter_build_type=None):
             filename=filename,
             archive_path=archive,
             build_type=infer_build_type_from_filename(filename),
+            build_os=infer_build_os_from_filename(filename),
             downloaded=True,
             extracted=extract_dir.exists(),
             extract_path=extract_dir if extract_dir.exists() else None,
@@ -311,6 +364,7 @@ def merge_builds(remote_builds, local_builds):
             remote = merged[filename]
             local.download_url = remote.download_url
             local.build_type = remote.build_type
+            local.build_os = remote.build_os or local.build_os
             # prefer scraper date if we have it and it seems newer or we don't have local date
             if remote.date and (not local.date or remote.date > local.date):
                 local.date = remote.date
@@ -325,21 +379,36 @@ async def download_build(url, save_path, progress_cb=None, chunk_size=1024 * 102
     save_path = pathlib.Path(save_path)
     tmp_path = save_path.with_suffix(save_path.suffix + ".part")
 
-    async with aiohttp.ClientSession() as session, session.get(url) as response:
-        if response.status != 200:
-            raise Exception(f"Download failed: HTTP {response.status}")
+    def cleanup_tmp():
+        try:
+            tmp_path.unlink()
+        except FileNotFoundError:
+            pass
+        except OSError:
+            pass
 
-        total = response.content_length or 0
-        downloaded = 0
-        last_modified = response.headers.get("Last-Modified")
+    try:
+        async with aiohttp.ClientSession() as session, session.get(url) as response:
+            if response.status != 200:
+                raise Exception(f"Download failed: HTTP {response.status}")
 
-        async with aiofiles.open(tmp_path, "wb") as f:
-            async for chunk in response.content.iter_chunked(chunk_size):
-                downloaded += await f.write(chunk)
-                if progress_cb:
-                    progress_cb(downloaded, total, "Downloading...")
+            total = response.content_length or 0
+            downloaded = 0
+            last_modified = response.headers.get("Last-Modified")
 
-    tmp_path.rename(save_path)
+            async with aiofiles.open(tmp_path, "wb") as f:
+                async for chunk in response.content.iter_chunked(chunk_size):
+                    downloaded += await f.write(chunk)
+                    if progress_cb:
+                        progress_cb(downloaded, total, "Downloading...")
+
+        tmp_path.rename(save_path)
+    except asyncio.CancelledError:
+        cleanup_tmp()
+        raise
+    except Exception:
+        cleanup_tmp()
+        raise
 
     # determine date: header first, then fallback
     date = fallback_date
@@ -373,66 +442,117 @@ async def extract_build(archive_path, progress_cb=None):
             f"only {', '.join(EXTRACTABLE_SUFFIXES)} archives are supported"
         )
     extract_dir = archive_extract_path(archive_path)
+    actual_extract_dir = extract_dir
 
-    if progress_cb:
-        progress_cb(0, 0, "Listing archive contents...")
+    def cleanup_extract_dir():
+        if actual_extract_dir.exists():
+            shutil.rmtree(actual_extract_dir, ignore_errors=True)
 
-    # count files for progress tracking
-    list_proc = await asyncio.create_subprocess_exec(
-        "tar", "-tJf", str(archive_path),
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    stdout, _ = await list_proc.communicate()
-    total_files = len(stdout.decode().strip().split("\n")) if stdout else 0
+    try:
+        if progress_cb:
+            progress_cb(0, 0, "Listing archive contents...")
 
-    if progress_cb:
-        progress_cb(0, total_files, "Extracting...")
+        # count files for progress tracking
+        list_proc = await asyncio.create_subprocess_exec(
+            "tar", "-tJf", str(archive_path),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await list_proc.communicate()
+        if list_proc.returncode != 0:
+            detail = stderr.decode(errors="replace").strip()
+            if detail:
+                raise Exception(f"Failed to inspect archive: {detail}")
+            raise Exception(f"Failed to inspect archive: tar exited with code {list_proc.returncode}")
+        members = [line.strip() for line in stdout.decode(errors="replace").splitlines() if line.strip()]
+        total_files = len(members)
+        roots = {
+            parts[0]
+            for name in members
+            if (parts := [part for part in pathlib.PurePosixPath(name).parts if part not in ("", ".")])
+        }
+        if len(roots) == 1:
+            actual_extract_dir = extract_dir.parent / next(iter(roots))
 
-    # extract with verbose to track progress
-    proc = await asyncio.create_subprocess_exec(
-        "tar", "-C", str(extract_dir.parent), "-xJvf", str(archive_path),
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
+        if progress_cb:
+            progress_cb(0, total_files, "Extracting...")
 
-    extracted = 0
-    async for line in proc.stdout:
-        extracted += 1
-        if progress_cb and extracted % 50 == 0:  # throttle UI updates
-            progress_cb(extracted, total_files, "Extracting...")
+        # extract with verbose to track progress
+        proc = await asyncio.create_subprocess_exec(
+            "tar", "-C", str(extract_dir.parent), "-xJvf", str(archive_path),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
 
-    exitcode = await proc.wait()
-    if exitcode != 0:
-        raise Exception(f"Extraction failed: tar exited with code {exitcode}")
+        extracted = 0
+        async for line in proc.stdout:
+            extracted += 1
+            if progress_cb and extracted % 50 == 0:  # throttle UI updates
+                progress_cb(extracted, total_files, "Extracting...")
 
-    # sync the date to the extracted directory
-    date_file = archive_path.with_suffix(archive_path.suffix + ".date")
-    if date_file.exists():
-        try:
-            shutil.copy2(date_file, extract_dir / ".blenderlauncher-date")
-            # also set mtime of the directory
-            dt = datetime.datetime.fromisoformat(date_file.read_text().strip())
-            mtime = dt.timestamp()
-            import os
-            os.utime(extract_dir, (mtime, mtime))
-        except Exception:
-            pass
+        stderr = await proc.stderr.read()
+        exitcode = await proc.wait()
+        if exitcode != 0:
+            detail = stderr.decode(errors="replace").strip()
+            if detail:
+                raise Exception(f"Extraction failed: tar exited with code {exitcode}: {detail}")
+            raise Exception(f"Extraction failed: tar exited with code {exitcode}")
 
-    if progress_cb:
-        progress_cb(total_files, total_files, "Extraction complete")
+        # sync the date to the extracted directory
+        date_file = archive_path.with_suffix(archive_path.suffix + ".date")
+        if date_file.exists():
+            try:
+                shutil.copy2(date_file, actual_extract_dir / ".blenderlauncher-date")
+                # also set mtime of the directory
+                dt = datetime.datetime.fromisoformat(date_file.read_text().strip())
+                mtime = dt.timestamp()
+                import os
+                os.utime(actual_extract_dir, (mtime, mtime))
+            except Exception:
+                pass
 
-    return extract_dir
+        if progress_cb:
+            progress_cb(total_files, total_files, "Extraction complete")
+
+        return actual_extract_dir
+    except asyncio.CancelledError:
+        cleanup_extract_dir()
+        raise
+    except Exception:
+        cleanup_extract_dir()
+        raise
 
 
-def launch_blender(blender_dir):
+def blender_executable_path(blender_dir, build_os="linux"):
+    """Return the Blender executable inside an extracted build directory."""
+    blender_dir = pathlib.Path(blender_dir)
+
+    if build_os in (None, "linux"):
+        blender_path = blender_dir / "blender"
+    elif build_os == "windows":
+        blender_path = blender_dir / "blender.exe"
+    elif build_os == "macos":
+        if blender_dir.name == "Blender.app":
+            blender_path = blender_dir / "Contents" / "MacOS" / "Blender"
+        else:
+            blender_path = blender_dir / "Blender.app" / "Contents" / "MacOS" / "Blender"
+    else:
+        raise ValueError(f"Unsupported build OS: {build_os}")
+
+    if not blender_path.exists():
+        raise FileNotFoundError(f"Blender executable not found: {blender_path}")
+    return blender_path
+
+
+def launch_blender(blender_dir, build_os="linux"):
     """Launch Blender from the given directory. Returns a subprocess.Popen."""
     import subprocess
 
-    blender_path = pathlib.Path(blender_dir) / "blender"
-    if not blender_path.exists():
-        raise FileNotFoundError(f"Blender executable not found: {blender_path}")
-    return subprocess.Popen([str(blender_path)])
+    blender_path = blender_executable_path(blender_dir, build_os)
+    kwargs = {}
+    if build_os == "macos":
+        kwargs["cwd"] = str(blender_path.parent)
+    return subprocess.Popen([str(blender_path)], **kwargs)
 
 
 def delete_build(build):

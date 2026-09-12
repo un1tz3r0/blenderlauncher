@@ -19,6 +19,7 @@ dependencies = [
 ]
 
 [project.scripts]
+blenderlauncher = "blenderlauncher.cli:main"
 blenderlauncher-cli = "blenderlauncher.cli:main"
 
 [project.gui-scripts]

@@ -175,15 +175,26 @@ class BuildRow(Gtk.Box):
             self.status_icon.add_css_class("status-remote")
 
     def _update_action_button(self):
-        if self.build.extracted:
+        if not core.can_prepare_build(self.build):
+            self.action_button.set_label("Unsupported")
+            self.action_button.set_icon_name("dialog-warning-symbolic")
+            self.action_button.set_tooltip_text(core.unsupported_build_message(self.build))
+            self.action_button.set_sensitive(False)
+        elif self.build.extracted:
             self.action_button.set_label("Launch")
             self.action_button.set_icon_name("media-playback-start-symbolic")
+            self.action_button.set_tooltip_text(None)
+            self.action_button.set_sensitive(True)
         elif self.build.downloaded:
             self.action_button.set_label("Extract & Launch")
             self.action_button.set_icon_name("package-x-generic-symbolic")
+            self.action_button.set_tooltip_text(None)
+            self.action_button.set_sensitive(True)
         else:
             self.action_button.set_label("Download")
             self.action_button.set_icon_name("folder-download-symbolic")
+            self.action_button.set_tooltip_text(None)
+            self.action_button.set_sensitive(True)
 
     def _on_action_clicked(self, button):
         self._on_action(self)
@@ -206,7 +217,7 @@ class BuildRow(Gtk.Box):
 
     def hide_progress(self):
         self.progress_box.set_visible(False)
-        self.action_button.set_sensitive(True)
+        self._update_action_button()
         self.delete_button.set_sensitive(True)
         self.remove_css_class("active-download")
 
@@ -288,6 +299,7 @@ class BlenderLauncherWindow(Adw.ApplicationWindow):
         super().__init__(application=app)
         self.bridge = bridge
         self.config = settings.load()
+        self._launched_processes = {}
         self.set_title("Blender Launcher")
         self.set_default_size(700, 600)
 
@@ -304,13 +316,15 @@ class BlenderLauncherWindow(Adw.ApplicationWindow):
         main_box.append(header)
 
         # refresh button
-        refresh_btn = Gtk.Button(icon_name="view-refresh-symbolic")
+        refresh_btn = Gtk.Button(label="Refresh", icon_name="view-refresh-symbolic")
+        refresh_btn.set_accessible_name("Refresh build list")
         refresh_btn.set_tooltip_text("Refresh build list")
         refresh_btn.connect("clicked", self._on_refresh)
         header.pack_start(refresh_btn)
 
         # preferences button
-        prefs_btn = Gtk.Button(icon_name="emblem-system-symbolic")
+        prefs_btn = Gtk.Button(label="Preferences", icon_name="emblem-system-symbolic")
+        prefs_btn.set_accessible_name("Preferences")
         prefs_btn.set_tooltip_text("Preferences")
         prefs_btn.connect("clicked", self._on_prefs)
         header.pack_end(prefs_btn)
@@ -387,7 +401,7 @@ class BlenderLauncherWindow(Adw.ApplicationWindow):
 
     async def _async_load_builds(self):
         download_dir = self.config["download_dir"]
-        os_filter = self.config.get("filter_os") or core.detect_os()
+        os_filter = core.normalize_supported_os_filter(self.config.get("filter_os"))
 
         # get local builds (fast, synchronous)
         local_builds = core.find_local_builds(download_dir, os_filter=os_filter)
@@ -409,6 +423,12 @@ class BlenderLauncherWindow(Adw.ApplicationWindow):
         if not discovered.issubset(self._known_branches):
             self._known_branches |= discovered
             self._rebuild_branch_menu()
+        selected = self.config.get("branch_filter", "all")
+        if selected != "all" and selected not in discovered:
+            self.config["branch_filter"] = "all"
+            settings.save(self.config)
+            self._filter_action.set_state(GLib.Variant.new_string("all"))
+            self._update_filter_button_label()
         self._populate_list()
 
     def _populate_list(self):
@@ -476,6 +496,9 @@ class BlenderLauncherWindow(Adw.ApplicationWindow):
     def _on_build_action(self, row):
         """Handle click on a build's action button."""
         build = row.build
+        if not core.can_prepare_build(build):
+            self._show_toast(core.unsupported_build_message(build))
+            return
         if build.extracted:
             self._launch_build(row)
         elif build.downloaded:
@@ -503,13 +526,15 @@ class BlenderLauncherWindow(Adw.ApplicationWindow):
                 self.list_box.remove(row)
                 self._build_rows.remove(row)
                 self._show_toast(f"Deleted {row.build.display_name}")
+                self._load_builds()
             except Exception as e:
                 self._show_toast(f"Error deleting: {e}")
 
     def _launch_build(self, row):
         """Launch an already-extracted build."""
         try:
-            proc = core.launch_blender(row.build.extract_path)
+            proc = core.launch_blender(row.build.extract_path, row.build.build_os)
+            self._launched_processes[proc.pid] = proc
             row.hide_progress()
             self._show_toast(f"Blender launched (PID {proc.pid})")
             # monitor exit natively through the GLib main loop
@@ -522,8 +547,21 @@ class BlenderLauncherWindow(Adw.ApplicationWindow):
 
     def _on_blender_exit(self, pid, status):
         """Called by GLib when a launched Blender process exits."""
-        if status != 0:
-            self._show_toast(f"Blender (PID {pid}) exited with code {status}")
+        import os
+
+        proc = self._launched_processes.pop(pid, None)
+        if proc is not None:
+            proc.wait()
+
+        try:
+            exit_code = os.waitstatus_to_exitcode(status)
+        except (AttributeError, ValueError):
+            exit_code = status
+
+        if exit_code < 0:
+            self._show_toast(f"Blender (PID {pid}) terminated by signal {-exit_code}")
+        elif exit_code != 0:
+            self._show_toast(f"Blender (PID {pid}) exited with code {exit_code}")
         else:
             self._show_toast("Blender exited normally")
 
@@ -554,7 +592,7 @@ class BlenderLauncherWindow(Adw.ApplicationWindow):
                 row.build.extracted = True
                 row.build.extract_path = extract_path
                 GLib.idle_add(row.refresh)
-                self._auto_cleanup_if_needed()
+                self._auto_cleanup_if_needed(protect=row.build.filename)
                 # now launch
                 GLib.idle_add(self._launch_build, row)
             except Exception as e:
@@ -610,7 +648,7 @@ class BlenderLauncherWindow(Adw.ApplicationWindow):
 
         self.bridge.run(_run())
 
-    def _auto_cleanup_if_needed(self):
+    def _auto_cleanup_if_needed(self, protect=None):
         """If auto-cleanup is enabled, remove old builds beyond the keep count."""
         if not self.config["auto_cleanup"]:
             return
@@ -618,12 +656,12 @@ class BlenderLauncherWindow(Adw.ApplicationWindow):
         # get current local builds sorted newest first
         local = core.find_local_builds(
             self.config["download_dir"],
-            os_filter=self.config.get("filter_os") or core.detect_os(),
+            os_filter=core.normalize_supported_os_filter(self.config.get("filter_os")),
         )
         sorted_builds = sorted(
             local.values(), key=lambda b: b.sort_key, reverse=True
         )
-        to_remove = sorted_builds[keep:]
+        to_remove = [build for build in sorted_builds[keep:] if build.filename != protect]
         for build in to_remove:
             try:
                 core.delete_build(build)
