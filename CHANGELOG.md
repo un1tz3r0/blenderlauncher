@@ -42,6 +42,10 @@ All notable changes to this project will be documented in this file.
 - **Auto-Cleanup Sorting:** Corrected the auto-cleanup mechanism to use the new release date sort order.
 
 ### Changed
+- **Security Updates:** Upgraded `aiohttp` 3.13.3 → 3.14.3, `lxml` 6.0.2 → 6.1.3,
+  `soupsieve` 2.8.3 → 2.9.2 and `idna` 3.11 → 3.19 to clear all 28 open
+  Dependabot alerts; the `aiohttp` and `lxml` minimums in `pyproject.toml` now
+  exclude the vulnerable releases.
 - **Project Layout:** Sources moved to `src/blenderlauncher/`, icons to `icons/`,
   and helper scripts to `scripts/`; the old `cli/blenderlatest.py` is replaced by
   the `blenderlauncher-cli` entry point.
