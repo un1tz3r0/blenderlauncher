@@ -429,10 +429,11 @@ async def extract_build(archive_path, progress_cb=None):
             f"only {', '.join(EXTRACTABLE_SUFFIXES)} archives are supported"
         )
     extract_dir = archive_extract_path(archive_path)
+    actual_extract_dir = extract_dir
 
     def cleanup_extract_dir():
-        if extract_dir.exists():
-            shutil.rmtree(extract_dir, ignore_errors=True)
+        if actual_extract_dir.exists():
+            shutil.rmtree(actual_extract_dir, ignore_errors=True)
 
     try:
         if progress_cb:
@@ -450,7 +451,15 @@ async def extract_build(archive_path, progress_cb=None):
             if detail:
                 raise Exception(f"Failed to inspect archive: {detail}")
             raise Exception(f"Failed to inspect archive: tar exited with code {list_proc.returncode}")
-        total_files = sum(1 for line in stdout.decode(errors="replace").splitlines() if line.strip())
+        members = [line.strip() for line in stdout.decode(errors="replace").splitlines() if line.strip()]
+        total_files = len(members)
+        roots = {
+            parts[0]
+            for name in members
+            if (parts := [part for part in pathlib.PurePosixPath(name).parts if part not in ("", ".")])
+        }
+        if len(roots) == 1:
+            actual_extract_dir = extract_dir.parent / next(iter(roots))
 
         if progress_cb:
             progress_cb(0, total_files, "Extracting...")
@@ -480,19 +489,19 @@ async def extract_build(archive_path, progress_cb=None):
         date_file = archive_path.with_suffix(archive_path.suffix + ".date")
         if date_file.exists():
             try:
-                shutil.copy2(date_file, extract_dir / ".blenderlauncher-date")
+                shutil.copy2(date_file, actual_extract_dir / ".blenderlauncher-date")
                 # also set mtime of the directory
                 dt = datetime.datetime.fromisoformat(date_file.read_text().strip())
                 mtime = dt.timestamp()
                 import os
-                os.utime(extract_dir, (mtime, mtime))
+                os.utime(actual_extract_dir, (mtime, mtime))
             except Exception:
                 pass
 
         if progress_cb:
             progress_cb(total_files, total_files, "Extraction complete")
 
-        return extract_dir
+        return actual_extract_dir
     except asyncio.CancelledError:
         cleanup_extract_dir()
         raise

@@ -315,14 +315,14 @@ class BlenderLauncherWindow(Adw.ApplicationWindow):
         main_box.append(header)
 
         # refresh button
-        refresh_btn = Gtk.Button(icon_name="view-refresh-symbolic")
+        refresh_btn = Gtk.Button(label="Refresh", icon_name="view-refresh-symbolic")
         refresh_btn.set_accessible_name("Refresh build list")
         refresh_btn.set_tooltip_text("Refresh build list")
         refresh_btn.connect("clicked", self._on_refresh)
         header.pack_start(refresh_btn)
 
         # preferences button
-        prefs_btn = Gtk.Button(icon_name="emblem-system-symbolic")
+        prefs_btn = Gtk.Button(label="Preferences", icon_name="emblem-system-symbolic")
         prefs_btn.set_accessible_name("Preferences")
         prefs_btn.set_tooltip_text("Preferences")
         prefs_btn.connect("clicked", self._on_prefs)
@@ -586,7 +586,7 @@ class BlenderLauncherWindow(Adw.ApplicationWindow):
                 row.build.extracted = True
                 row.build.extract_path = extract_path
                 GLib.idle_add(row.refresh)
-                self._auto_cleanup_if_needed()
+                self._auto_cleanup_if_needed(protect=row.build.filename)
                 # now launch
                 GLib.idle_add(self._launch_build, row)
             except Exception as e:
@@ -642,7 +642,7 @@ class BlenderLauncherWindow(Adw.ApplicationWindow):
 
         self.bridge.run(_run())
 
-    def _auto_cleanup_if_needed(self):
+    def _auto_cleanup_if_needed(self, protect=None):
         """If auto-cleanup is enabled, remove old builds beyond the keep count."""
         if not self.config["auto_cleanup"]:
             return
@@ -655,7 +655,7 @@ class BlenderLauncherWindow(Adw.ApplicationWindow):
         sorted_builds = sorted(
             local.values(), key=lambda b: b.sort_key, reverse=True
         )
-        to_remove = sorted_builds[keep:]
+        to_remove = [build for build in sorted_builds[keep:] if build.filename != protect]
         for build in to_remove:
             try:
                 core.delete_build(build)
