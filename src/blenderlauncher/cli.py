@@ -185,7 +185,7 @@ async def run_blender(extract_path, build_os=None):
 
 
 def build_parser(config):
-    default_os = config.get("filter_os") or core.detect_os()
+    default_os = core.normalize_supported_os_filter(config.get("filter_os"))
 
     parser = argparse.ArgumentParser(
         prog="blenderlauncher-cli",
@@ -205,7 +205,7 @@ def build_parser(config):
         "--os",
         dest="os_filter",
         default=default_os,
-        choices=sorted(core.OS_ARCHIVE_SUFFIXES),
+        choices=sorted(core.SUPPORTED_BUILD_OSES),
         help=(
             "Which platform's builds to consider "
             f"(default: {default_os}, detected from the running system)"

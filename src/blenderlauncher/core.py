@@ -40,6 +40,7 @@ OS_ARCHIVE_SUFFIXES = {
     "windows": (".zip", ".msi", ".msix"),
     "macos": (".dmg",),
 }
+SUPPORTED_BUILD_OSES = ("linux",)
 
 EXTRACTABLE_SUFFIXES = (".tar.xz",)
 
@@ -67,6 +68,18 @@ def detect_os(default="linux"):
 def archive_suffixes_for_os(os_filter):
     """Archive suffixes published for the given OS name."""
     return OS_ARCHIVE_SUFFIXES.get(os_filter, OS_ARCHIVE_SUFFIXES["linux"])
+
+
+def normalize_supported_os_filter(os_filter=None):
+    """Clamp requested OS filters to the currently supported end-to-end platforms."""
+    if os_filter is None:
+        os_filter = detect_os()
+    if isinstance(os_filter, String):
+        return os_filter if os_filter in SUPPORTED_BUILD_OSES else SUPPORTED_BUILD_OSES[0]
+    if isinstance(os_filter, Iterable) and all(isinstance(s, String) for s in os_filter):
+        supported = tuple(s for s in os_filter if s in SUPPORTED_BUILD_OSES)
+        return supported or SUPPORTED_BUILD_OSES
+    raise TypeError("os_filter must be either None, a string, or an iterable of strings!")
 
 
 def archive_suffixes_for_filter(os_filter):

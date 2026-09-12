@@ -299,6 +299,7 @@ class BlenderLauncherWindow(Adw.ApplicationWindow):
         super().__init__(application=app)
         self.bridge = bridge
         self.config = settings.load()
+        self._launched_processes = {}
         self.set_title("Blender Launcher")
         self.set_default_size(700, 600)
 
@@ -400,7 +401,7 @@ class BlenderLauncherWindow(Adw.ApplicationWindow):
 
     async def _async_load_builds(self):
         download_dir = self.config["download_dir"]
-        os_filter = self.config.get("filter_os") or core.detect_os()
+        os_filter = core.normalize_supported_os_filter(self.config.get("filter_os"))
 
         # get local builds (fast, synchronous)
         local_builds = core.find_local_builds(download_dir, os_filter=os_filter)
@@ -533,6 +534,7 @@ class BlenderLauncherWindow(Adw.ApplicationWindow):
         """Launch an already-extracted build."""
         try:
             proc = core.launch_blender(row.build.extract_path, row.build.build_os)
+            self._launched_processes[proc.pid] = proc
             row.hide_progress()
             self._show_toast(f"Blender launched (PID {proc.pid})")
             # monitor exit natively through the GLib main loop
@@ -546,6 +548,10 @@ class BlenderLauncherWindow(Adw.ApplicationWindow):
     def _on_blender_exit(self, pid, status):
         """Called by GLib when a launched Blender process exits."""
         import os
+
+        proc = self._launched_processes.pop(pid, None)
+        if proc is not None:
+            proc.wait()
 
         try:
             exit_code = os.waitstatus_to_exitcode(status)
@@ -650,7 +656,7 @@ class BlenderLauncherWindow(Adw.ApplicationWindow):
         # get current local builds sorted newest first
         local = core.find_local_builds(
             self.config["download_dir"],
-            os_filter=self.config.get("filter_os") or core.detect_os(),
+            os_filter=core.normalize_supported_os_filter(self.config.get("filter_os")),
         )
         sorted_builds = sorted(
             local.values(), key=lambda b: b.sort_key, reverse=True
