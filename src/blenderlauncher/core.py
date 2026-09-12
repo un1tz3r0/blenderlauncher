@@ -430,64 +430,75 @@ async def extract_build(archive_path, progress_cb=None):
         )
     extract_dir = archive_extract_path(archive_path)
 
-    if progress_cb:
-        progress_cb(0, 0, "Listing archive contents...")
+    def cleanup_extract_dir():
+        if extract_dir.exists():
+            shutil.rmtree(extract_dir, ignore_errors=True)
 
-    # count files for progress tracking
-    list_proc = await asyncio.create_subprocess_exec(
-        "tar", "-tJf", str(archive_path),
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    stdout, stderr = await list_proc.communicate()
-    if list_proc.returncode != 0:
-        detail = stderr.decode(errors="replace").strip()
-        if detail:
-            raise Exception(f"Failed to inspect archive: {detail}")
-        raise Exception(f"Failed to inspect archive: tar exited with code {list_proc.returncode}")
-    total_files = sum(1 for line in stdout.decode(errors="replace").splitlines() if line.strip())
+    try:
+        if progress_cb:
+            progress_cb(0, 0, "Listing archive contents...")
 
-    if progress_cb:
-        progress_cb(0, total_files, "Extracting...")
+        # count files for progress tracking
+        list_proc = await asyncio.create_subprocess_exec(
+            "tar", "-tJf", str(archive_path),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await list_proc.communicate()
+        if list_proc.returncode != 0:
+            detail = stderr.decode(errors="replace").strip()
+            if detail:
+                raise Exception(f"Failed to inspect archive: {detail}")
+            raise Exception(f"Failed to inspect archive: tar exited with code {list_proc.returncode}")
+        total_files = sum(1 for line in stdout.decode(errors="replace").splitlines() if line.strip())
 
-    # extract with verbose to track progress
-    proc = await asyncio.create_subprocess_exec(
-        "tar", "-C", str(extract_dir.parent), "-xJvf", str(archive_path),
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
+        if progress_cb:
+            progress_cb(0, total_files, "Extracting...")
 
-    extracted = 0
-    async for line in proc.stdout:
-        extracted += 1
-        if progress_cb and extracted % 50 == 0:  # throttle UI updates
-            progress_cb(extracted, total_files, "Extracting...")
+        # extract with verbose to track progress
+        proc = await asyncio.create_subprocess_exec(
+            "tar", "-C", str(extract_dir.parent), "-xJvf", str(archive_path),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
 
-    stderr = await proc.stderr.read()
-    exitcode = await proc.wait()
-    if exitcode != 0:
-        detail = stderr.decode(errors="replace").strip()
-        if detail:
-            raise Exception(f"Extraction failed: tar exited with code {exitcode}: {detail}")
-        raise Exception(f"Extraction failed: tar exited with code {exitcode}")
+        extracted = 0
+        async for line in proc.stdout:
+            extracted += 1
+            if progress_cb and extracted % 50 == 0:  # throttle UI updates
+                progress_cb(extracted, total_files, "Extracting...")
 
-    # sync the date to the extracted directory
-    date_file = archive_path.with_suffix(archive_path.suffix + ".date")
-    if date_file.exists():
-        try:
-            shutil.copy2(date_file, extract_dir / ".blenderlauncher-date")
-            # also set mtime of the directory
-            dt = datetime.datetime.fromisoformat(date_file.read_text().strip())
-            mtime = dt.timestamp()
-            import os
-            os.utime(extract_dir, (mtime, mtime))
-        except Exception:
-            pass
+        stderr = await proc.stderr.read()
+        exitcode = await proc.wait()
+        if exitcode != 0:
+            detail = stderr.decode(errors="replace").strip()
+            if detail:
+                raise Exception(f"Extraction failed: tar exited with code {exitcode}: {detail}")
+            raise Exception(f"Extraction failed: tar exited with code {exitcode}")
 
-    if progress_cb:
-        progress_cb(total_files, total_files, "Extraction complete")
+        # sync the date to the extracted directory
+        date_file = archive_path.with_suffix(archive_path.suffix + ".date")
+        if date_file.exists():
+            try:
+                shutil.copy2(date_file, extract_dir / ".blenderlauncher-date")
+                # also set mtime of the directory
+                dt = datetime.datetime.fromisoformat(date_file.read_text().strip())
+                mtime = dt.timestamp()
+                import os
+                os.utime(extract_dir, (mtime, mtime))
+            except Exception:
+                pass
 
-    return extract_dir
+        if progress_cb:
+            progress_cb(total_files, total_files, "Extraction complete")
+
+        return extract_dir
+    except asyncio.CancelledError:
+        cleanup_extract_dir()
+        raise
+    except Exception:
+        cleanup_extract_dir()
+        raise
 
 
 def blender_executable_path(blender_dir, build_os="linux"):
@@ -516,7 +527,10 @@ def launch_blender(blender_dir, build_os="linux"):
     import subprocess
 
     blender_path = blender_executable_path(blender_dir, build_os)
-    return subprocess.Popen([str(blender_path)])
+    kwargs = {}
+    if build_os == "macos":
+        kwargs["cwd"] = str(blender_path.parent)
+    return subprocess.Popen([str(blender_path)], **kwargs)
 
 
 def delete_build(build):
