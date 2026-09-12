@@ -175,15 +175,26 @@ class BuildRow(Gtk.Box):
             self.status_icon.add_css_class("status-remote")
 
     def _update_action_button(self):
-        if self.build.extracted:
+        if not core.can_prepare_build(self.build):
+            self.action_button.set_label("Unsupported")
+            self.action_button.set_icon_name("dialog-warning-symbolic")
+            self.action_button.set_tooltip_text(core.unsupported_build_message(self.build))
+            self.action_button.set_sensitive(False)
+        elif self.build.extracted:
             self.action_button.set_label("Launch")
             self.action_button.set_icon_name("media-playback-start-symbolic")
+            self.action_button.set_tooltip_text(None)
+            self.action_button.set_sensitive(True)
         elif self.build.downloaded:
             self.action_button.set_label("Extract & Launch")
             self.action_button.set_icon_name("package-x-generic-symbolic")
+            self.action_button.set_tooltip_text(None)
+            self.action_button.set_sensitive(True)
         else:
             self.action_button.set_label("Download")
             self.action_button.set_icon_name("folder-download-symbolic")
+            self.action_button.set_tooltip_text(None)
+            self.action_button.set_sensitive(True)
 
     def _on_action_clicked(self, button):
         self._on_action(self)
@@ -206,7 +217,7 @@ class BuildRow(Gtk.Box):
 
     def hide_progress(self):
         self.progress_box.set_visible(False)
-        self.action_button.set_sensitive(True)
+        self._update_action_button()
         self.delete_button.set_sensitive(True)
         self.remove_css_class("active-download")
 
@@ -476,6 +487,9 @@ class BlenderLauncherWindow(Adw.ApplicationWindow):
     def _on_build_action(self, row):
         """Handle click on a build's action button."""
         build = row.build
+        if not core.can_prepare_build(build):
+            self._show_toast(core.unsupported_build_message(build))
+            return
         if build.extracted:
             self._launch_build(row)
         elif build.downloaded:
@@ -509,7 +523,7 @@ class BlenderLauncherWindow(Adw.ApplicationWindow):
     def _launch_build(self, row):
         """Launch an already-extracted build."""
         try:
-            proc = core.launch_blender(row.build.extract_path)
+            proc = core.launch_blender(row.build.extract_path, row.build.build_os)
             row.hide_progress()
             self._show_toast(f"Blender launched (PID {proc.pid})")
             # monitor exit natively through the GLib main loop
@@ -522,8 +536,17 @@ class BlenderLauncherWindow(Adw.ApplicationWindow):
 
     def _on_blender_exit(self, pid, status):
         """Called by GLib when a launched Blender process exits."""
-        if status != 0:
-            self._show_toast(f"Blender (PID {pid}) exited with code {status}")
+        import os
+
+        try:
+            exit_code = os.waitstatus_to_exitcode(status)
+        except (AttributeError, ValueError):
+            exit_code = status
+
+        if exit_code < 0:
+            self._show_toast(f"Blender (PID {pid}) terminated by signal {-exit_code}")
+        elif exit_code != 0:
+            self._show_toast(f"Blender (PID {pid}) exited with code {exit_code}")
         else:
             self._show_toast("Blender exited normally")
 

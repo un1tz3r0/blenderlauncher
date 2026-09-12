@@ -68,6 +68,14 @@ def archive_suffixes_for_os(os_filter):
     return OS_ARCHIVE_SUFFIXES.get(os_filter, OS_ARCHIVE_SUFFIXES["linux"])
 
 
+def infer_build_os_from_filename(filename):
+    """Best-effort OS detection from a Blender archive filename."""
+    for build_os, suffixes in OS_ARCHIVE_SUFFIXES.items():
+        if filename.endswith(suffixes):
+            return build_os
+    return None
+
+
 def strip_archive_suffix(filename):
     """Drop a known archive suffix (`.tar.xz`, `.zip`, `.dmg`, ...) from a name."""
     for suffixes in OS_ARCHIVE_SUFFIXES.values():
@@ -121,6 +129,24 @@ class BlenderBuild:
             except (OSError, ValueError, OverflowError):
                 ts = 0
         return (ts, self.filename)
+
+
+def effective_build_os(build):
+    """Return the known OS for a build, falling back to its filename."""
+    return build.build_os or infer_build_os_from_filename(build.filename)
+
+
+def can_prepare_build(build):
+    """Whether this build can be downloaded/extracted/launched end-to-end."""
+    return effective_build_os(build) == "linux"
+
+
+def unsupported_build_message(build):
+    build_os = effective_build_os(build) or "This"
+    return (
+        f"{build_os.capitalize()} builds can be listed, but only Linux .tar.xz builds "
+        "can be prepared and launched right now."
+    )
 
 
 # callback signature: (bytes_done, bytes_total, status_text) -> None
@@ -288,6 +314,7 @@ def find_local_builds(download_dir, os_filter=None, filter_build_type=None):
             filename=filename,
             archive_path=archive,
             build_type=infer_build_type_from_filename(filename),
+            build_os=infer_build_os_from_filename(filename),
             downloaded=True,
             extracted=extract_dir.exists(),
             extract_path=extract_dir if extract_dir.exists() else None,
@@ -311,6 +338,7 @@ def merge_builds(remote_builds, local_builds):
             remote = merged[filename]
             local.download_url = remote.download_url
             local.build_type = remote.build_type
+            local.build_os = remote.build_os or local.build_os
             # prefer scraper date if we have it and it seems newer or we don't have local date
             if remote.date and (not local.date or remote.date > local.date):
                 local.date = remote.date
@@ -325,21 +353,30 @@ async def download_build(url, save_path, progress_cb=None, chunk_size=1024 * 102
     save_path = pathlib.Path(save_path)
     tmp_path = save_path.with_suffix(save_path.suffix + ".part")
 
-    async with aiohttp.ClientSession() as session, session.get(url) as response:
-        if response.status != 200:
-            raise Exception(f"Download failed: HTTP {response.status}")
+    try:
+        async with aiohttp.ClientSession() as session, session.get(url) as response:
+            if response.status != 200:
+                raise Exception(f"Download failed: HTTP {response.status}")
 
-        total = response.content_length or 0
-        downloaded = 0
-        last_modified = response.headers.get("Last-Modified")
+            total = response.content_length or 0
+            downloaded = 0
+            last_modified = response.headers.get("Last-Modified")
 
-        async with aiofiles.open(tmp_path, "wb") as f:
-            async for chunk in response.content.iter_chunked(chunk_size):
-                downloaded += await f.write(chunk)
-                if progress_cb:
-                    progress_cb(downloaded, total, "Downloading...")
+            async with aiofiles.open(tmp_path, "wb") as f:
+                async for chunk in response.content.iter_chunked(chunk_size):
+                    downloaded += await f.write(chunk)
+                    if progress_cb:
+                        progress_cb(downloaded, total, "Downloading...")
 
-    tmp_path.rename(save_path)
+        tmp_path.rename(save_path)
+    except BaseException:
+        try:
+            tmp_path.unlink()
+        except FileNotFoundError:
+            pass
+        except OSError:
+            pass
+        raise
 
     # determine date: header first, then fallback
     date = fallback_date
@@ -425,13 +462,32 @@ async def extract_build(archive_path, progress_cb=None):
     return extract_dir
 
 
-def launch_blender(blender_dir):
+def blender_executable_path(blender_dir, build_os="linux"):
+    """Return the Blender executable inside an extracted build directory."""
+    blender_dir = pathlib.Path(blender_dir)
+
+    if build_os in (None, "linux"):
+        blender_path = blender_dir / "blender"
+    elif build_os == "windows":
+        blender_path = blender_dir / "blender.exe"
+    elif build_os == "macos":
+        if blender_dir.name == "Blender.app":
+            blender_path = blender_dir / "Contents" / "MacOS" / "Blender"
+        else:
+            blender_path = blender_dir / "Blender.app" / "Contents" / "MacOS" / "Blender"
+    else:
+        raise ValueError(f"Unsupported build OS: {build_os}")
+
+    if not blender_path.exists():
+        raise FileNotFoundError(f"Blender executable not found: {blender_path}")
+    return blender_path
+
+
+def launch_blender(blender_dir, build_os="linux"):
     """Launch Blender from the given directory. Returns a subprocess.Popen."""
     import subprocess
 
-    blender_path = pathlib.Path(blender_dir) / "blender"
-    if not blender_path.exists():
-        raise FileNotFoundError(f"Blender executable not found: {blender_path}")
+    blender_path = blender_executable_path(blender_dir, build_os)
     return subprocess.Popen([str(blender_path)])
 
 
