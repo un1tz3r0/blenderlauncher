@@ -5,3 +5,5 @@ flatpak-repo/**/*
 flatpak-build/**/*
 flatpak-repo
 flatpak-build
+*.egg-info/
+.venv/

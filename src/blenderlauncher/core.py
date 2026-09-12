@@ -3,8 +3,12 @@ import datetime
 import pathlib
 import re
 import shutil
-from dataclasses import dataclass, field
-from typing import Callable, Optional
+import sys
+from builtins import str as String
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass
+from enum import Enum
+from os import PathLike
 
 import aiofiles
 import aiohttp
@@ -12,27 +16,91 @@ import yarl
 from bs4 import BeautifulSoup
 
 
+class BlenderBuildType(Enum):
+    STABLE = "stable"
+    ALPHA = "alpha"
+    BETA = "beta"
+    CANDIDATE = "candidate"
+    UNKNOWN = "unknown"
+    @classmethod
+    def from_string(cls, s: str):
+      if s in cls._value2member_map_:
+        return cls._value2member_map_[s]
+      else:
+        return cls.UNKNOWN
+    def __str__(self):
+        return self.value
+
+
+# The builder page tags every download link with a `plausible-event-os=<name>`
+# class; these are the names it uses, mapped to the archive suffixes each one
+# ships. Only the linux tarballs can be extracted by `extract_build()` so far.
+OS_ARCHIVE_SUFFIXES = {
+    "linux": (".tar.xz",),
+    "windows": (".zip", ".msi", ".msix"),
+    "macos": (".dmg",),
+}
+
+EXTRACTABLE_SUFFIXES = (".tar.xz",)
+
+_PLATFORM_SUFFIX_RE = re.compile(
+    r"-(?:linux|windows|darwin|macos)(?:64)?(?:[.\-][\w.\-]*)?$"
+)
+
+
+def detect_os(default="linux"):
+    """Return the builder page's OS name for the platform we are running on.
+
+    Falls back to `default` on platforms the builder does not publish for, so
+    callers always get a usable filter value."""
+    platform = sys.platform
+    if platform.startswith("linux"):
+        return "linux"
+    if platform == "darwin":
+        return "macos"
+    if platform.startswith("win") or platform == "cygwin":
+        return "windows"
+    return default
+
+
+def archive_suffixes_for_os(os_filter):
+    """Archive suffixes published for the given OS name."""
+    return OS_ARCHIVE_SUFFIXES.get(os_filter, OS_ARCHIVE_SUFFIXES["linux"])
+
+
+def strip_archive_suffix(filename):
+    """Drop a known archive suffix (`.tar.xz`, `.zip`, `.dmg`, ...) from a name."""
+    for suffixes in OS_ARCHIVE_SUFFIXES.values():
+        for suffix in suffixes:
+            if filename.endswith(suffix):
+                return filename[: -len(suffix)]
+    return filename
+
+
+def archive_extract_path(archive_path):
+    """The directory an archive expands into, next to the archive itself."""
+    archive_path = pathlib.Path(archive_path)
+    return archive_path.with_name(strip_archive_suffix(archive_path.name))
+
+
 @dataclass
 class BlenderBuild:
     """Represents a Blender daily build, either remote or local or both."""
 
-    filename: str
-    download_url: Optional[str] = None
-    archive_path: Optional[pathlib.Path] = None
-    extract_path: Optional[pathlib.Path] = None
-    build_type: str = "unknown"
+    filename: String
+    download_url: String | None = None
+    archive_path: PathLike | None = None
+    extract_path: PathLike | None = None
+    build_type: String = "unknown"
+    build_os: String | None = None
     downloaded: bool = False
     extracted: bool = False
-    date: Optional[datetime.datetime] = None
+    date: datetime.datetime | None = None
 
     @property
     def display_name(self):
-        name = self.filename
-        # strip platform and extension to get a clean version string
-        name = re.sub(r"-linux-x86_64", "", name)
-        name = re.sub(r"-linux64", "", name)
-        name = re.sub(r"\.tar\.xz$", "", name)
-        return name
+        # strip extension and platform/arch tag to get a clean version string
+        return _PLATFORM_SUFFIX_RE.sub("", strip_archive_suffix(self.filename))
 
     @property
     def status_text(self):
@@ -71,38 +139,48 @@ def infer_build_type_from_filename(filename: str) -> str:
     return "unknown"
 
 
-async def scrape_daily_builds():
-    """Scrape the Blender daily builds page and return available builds."""
+async def scrape_daily_builds(os_filter=None, filter_build_type=None):
+    """Scrape the Blender daily builds page and return available builds.
+
+    `os_filter` is one of the keys of `OS_ARCHIVE_SUFFIXES` (or an iterable of
+    them); it defaults to the OS we are running on."""
+    if os_filter is None:
+        os_filter = detect_os()
+    if isinstance(os_filter, String):
+        suffixes = archive_suffixes_for_os(os_filter)
+    else:
+        suffixes = tuple(s for name in os_filter for s in archive_suffixes_for_os(name))
+
     async with aiohttp.ClientSession() as session:
-        async with session.get(
-            "https://builder.blender.org/download/daily/"
-        ) as resp:
+        async with session.get("https://builder.blender.org/download/daily/") as resp:
             if resp.status != 200:
-                raise Exception(f"Failed to fetch daily builds page: HTTP {resp.status}")
+                raise RuntimeError(f"Failed to fetch daily builds page: HTTP {resp.status}")
             html_text = await resp.text()
 
     html = BeautifulSoup(html_text, features="lxml")
     builds = []
+    # each row links the same archive from several buttons; keep the first
+    seen_urls = set()
 
     rows = html.select("li.t-row.build")
     for row in rows:
         # Extract date once per row
         date_cell = row.find("div", class_="b-date")
         build_date = None
+        build_os = None
+
         if date_cell and "title" in date_cell.attrs:
             try:
                 build_date = datetime.datetime.fromisoformat(date_cell.attrs["title"])
-            except Exception:
-                pass
+            except ValueError:
+                build_date = None
 
         for a in row.find_all("a"):
             cls = a.get("class", [])
-            if "plausible-event-os=linux" not in cls:
-                continue
             if "plausible-event-name=Downloads+Blender" not in cls:
                 continue
             url_str = a.attrs.get("href", "")
-            if not url_str.endswith(".xz"):
+            if not url_str.endswith(suffixes) or url_str in seen_urls:
                 continue
 
             # Discover the branch dynamically from the plausible-event-build=<X> class
@@ -114,13 +192,46 @@ async def scrape_daily_builds():
             if not build_type:
                 continue
 
+            # Discover the target OS from plausible-event-os=<X> class
+            build_os = None
+            for c in cls:
+                if c.startswith("plausible-event-os="):
+                    build_os = c.split("=", 1)[1]
+                    break
+            if build_os == None:
+                continue
+
             url = yarl.URL(url_str)
             filename = url.parts[-1]
+
+            # filter by os and build type
+            if os_filter != None:
+                if isinstance(os_filter, String):
+                    if build_os != os_filter:
+                        continue
+                elif isinstance(os_filter, Iterable) and all(isinstance(s, String) for s in os_filter):
+                    if not any(build_os == s for s in os_filter):
+                        continue
+                else:
+                    raise TypeError("os_filter must be either None, a string, or an iterable of strings!")
+
+            if filter_build_type != None:
+                if isinstance(filter_build_type, String):
+                    if build_type != filter_build_type:
+                        continue
+                elif isinstance(filter_build_type, Iterable) and all(isinstance(s, String) for s in filter_build_type):
+                    if not any(build_type == s for s in filter_build_type):
+                        continue
+                else:
+                    raise TypeError("filter_type must be either None, a string, or an iterable of strings!")
+
+            seen_urls.add(url_str)
             builds.append(
                 BlenderBuild(
                     filename=filename,
                     download_url=str(url),
                     build_type=build_type,
+                    build_os=build_os,
                     date=build_date,
                 )
             )
@@ -128,15 +239,25 @@ async def scrape_daily_builds():
     return builds
 
 
-def find_local_builds(download_dir):
-    """Find already downloaded/extracted Blender builds in the download directory."""
+def find_local_builds(download_dir, os_filter=None, filter_build_type=None):
+    """Find already downloaded/extracted Blender builds in the download directory.
+
+    Only archives matching `os_filter`'s suffixes are considered; it defaults to
+    the OS we are running on."""
+    if os_filter is None:
+        os_filter = detect_os()
     download_path = pathlib.Path(download_dir).expanduser().absolute()
     builds = {}
 
-    for archive in download_path.glob("blender-*.tar.xz"):
+    archives = [
+        archive
+        for suffix in archive_suffixes_for_os(os_filter)
+        for archive in download_path.glob(f"blender-*{suffix}")
+    ]
+    for archive in archives:
         filename = archive.name
-        extract_dir = archive.with_suffix("").with_suffix("")  # strip .tar.xz
-        
+        extract_dir = archive_extract_path(archive)
+
         # Try to read date from .date file, otherwise use mtime
         date_file = archive.with_suffix(archive.suffix + ".date")
         date = None
@@ -145,12 +266,23 @@ def find_local_builds(download_dir):
                 date = datetime.datetime.fromisoformat(date_file.read_text().strip())
             except Exception:
                 pass
-        
+
         if not date:
             try:
                 date = datetime.datetime.fromtimestamp(archive.stat().st_mtime)
             except Exception:
                 pass
+
+        build_type=infer_build_type_from_filename(filename)
+        if filter_build_type != None:
+            if isinstance(filter_build_type, String):
+                if build_type != filter_build_type:
+                    continue
+            elif isinstance(filter_build_type, Iterable):
+                if not any(build_type == s for s in filter_build_type):
+                    continue
+            else:
+                raise TypeError("filter_build_type must be either None, a string or an iterable of strings!")
 
         builds[filename] = BlenderBuild(
             filename=filename,
@@ -166,7 +298,7 @@ def find_local_builds(download_dir):
 
 
 def merge_builds(remote_builds, local_builds):
-    """Merge remote and local build lists, preferring local info when available."""
+    """Merge remote and local build lists, preferring local info when available. Returns iterable of deduped builds sorted by date."""
     merged = {}
 
     # start with remote builds
@@ -193,31 +325,30 @@ async def download_build(url, save_path, progress_cb=None, chunk_size=1024 * 102
     save_path = pathlib.Path(save_path)
     tmp_path = save_path.with_suffix(save_path.suffix + ".part")
 
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url) as response:
-            if response.status != 200:
-                raise Exception(f"Download failed: HTTP {response.status}")
+    async with aiohttp.ClientSession() as session, session.get(url) as response:
+        if response.status != 200:
+            raise Exception(f"Download failed: HTTP {response.status}")
 
-            total = response.content_length or 0
-            downloaded = 0
-            last_modified = response.headers.get("Last-Modified")
+        total = response.content_length or 0
+        downloaded = 0
+        last_modified = response.headers.get("Last-Modified")
 
-            async with aiofiles.open(tmp_path, "wb") as f:
-                async for chunk in response.content.iter_chunked(chunk_size):
-                    downloaded += await f.write(chunk)
-                    if progress_cb:
-                        progress_cb(downloaded, total, "Downloading...")
+        async with aiofiles.open(tmp_path, "wb") as f:
+            async for chunk in response.content.iter_chunked(chunk_size):
+                downloaded += await f.write(chunk)
+                if progress_cb:
+                    progress_cb(downloaded, total, "Downloading...")
 
     tmp_path.rename(save_path)
-    
+
     # determine date: header first, then fallback
     date = fallback_date
     if last_modified:
         try:
             from email.utils import parsedate_to_datetime
             date = parsedate_to_datetime(last_modified)
-        except Exception:
-            pass
+        except :
+            date = fallback_date
 
     if date:
         try:
@@ -236,7 +367,12 @@ async def download_build(url, save_path, progress_cb=None, chunk_size=1024 * 102
 async def extract_build(archive_path, progress_cb=None):
     """Extract a .tar.xz archive with progress reporting."""
     archive_path = pathlib.Path(archive_path)
-    extract_dir = archive_path.with_suffix("").with_suffix("")
+    if not archive_path.name.endswith(EXTRACTABLE_SUFFIXES):
+        raise Exception(
+            f"Don't know how to extract {archive_path.name}; "
+            f"only {', '.join(EXTRACTABLE_SUFFIXES)} archives are supported"
+        )
+    extract_dir = archive_extract_path(archive_path)
 
     if progress_cb:
         progress_cb(0, 0, "Listing archive contents...")
