@@ -514,6 +514,7 @@ class BlenderLauncherWindow(Adw.ApplicationWindow):
         if response == "delete":
             try:
                 core.delete_build(row.build)
+                self._all_builds = [b for b in self._all_builds if b.filename != row.build.filename]
                 self.list_box.remove(row)
                 self._build_rows.remove(row)
                 self._show_toast(f"Deleted {row.build.display_name}")

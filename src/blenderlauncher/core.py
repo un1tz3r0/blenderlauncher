@@ -68,6 +68,15 @@ def archive_suffixes_for_os(os_filter):
     return OS_ARCHIVE_SUFFIXES.get(os_filter, OS_ARCHIVE_SUFFIXES["linux"])
 
 
+def archive_suffixes_for_filter(os_filter):
+    """Archive suffixes for one OS name or an iterable of OS names."""
+    if isinstance(os_filter, String):
+        return archive_suffixes_for_os(os_filter)
+    if isinstance(os_filter, Iterable) and all(isinstance(s, String) for s in os_filter):
+        return tuple(s for name in os_filter for s in archive_suffixes_for_os(name))
+    raise TypeError("os_filter must be either None, a string, or an iterable of strings!")
+
+
 def infer_build_os_from_filename(filename):
     """Best-effort OS detection from a Blender archive filename."""
     for build_os, suffixes in OS_ARCHIVE_SUFFIXES.items():
@@ -172,10 +181,7 @@ async def scrape_daily_builds(os_filter=None, filter_build_type=None):
     them); it defaults to the OS we are running on."""
     if os_filter is None:
         os_filter = detect_os()
-    if isinstance(os_filter, String):
-        suffixes = archive_suffixes_for_os(os_filter)
-    else:
-        suffixes = tuple(s for name in os_filter for s in archive_suffixes_for_os(name))
+    suffixes = archive_suffixes_for_filter(os_filter)
 
     async with aiohttp.ClientSession() as session:
         async with session.get("https://builder.blender.org/download/daily/") as resp:
@@ -274,10 +280,11 @@ def find_local_builds(download_dir, os_filter=None, filter_build_type=None):
         os_filter = detect_os()
     download_path = pathlib.Path(download_dir).expanduser().absolute()
     builds = {}
+    suffixes = archive_suffixes_for_filter(os_filter)
 
     archives = [
         archive
-        for suffix in archive_suffixes_for_os(os_filter)
+        for suffix in suffixes
         for archive in download_path.glob(f"blender-*{suffix}")
     ]
     for archive in archives:
