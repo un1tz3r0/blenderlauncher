@@ -2,7 +2,7 @@ app-id: org.blenderlauncher.BlenderLauncher
 runtime: org.gnome.Platform
 runtime-version: '48'
 sdk: org.gnome.Sdk
-command: blenderlauncher
+command: blenderlauncher-gui
 
 finish-args:
   # display access

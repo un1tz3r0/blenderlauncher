@@ -7,6 +7,8 @@ DEFAULTS = {
     "auto_cleanup": False,
     "keep_versions": 3,
     "branch_filter": "all",
+    # None: auto-detect from the platform we are running on (core.detect_os)
+    "filter_os": None,
 }
 
 CONFIG_DIR = pathlib.Path("~/.config/blenderlauncher").expanduser()

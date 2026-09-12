@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Platform Detection:** `core.detect_os()` maps the running platform onto the
+  builder page's OS names (`linux`/`macos`/`windows`), and both front-ends now
+  use it as the default OS filter instead of assuming Linux. A `filter_os`
+  setting overrides the detected value; `None` means auto-detect.
+- **OS-Aware Scraping:** `scrape_daily_builds()` and `find_local_builds()` take
+  an `os_filter` argument and match the archive suffixes each platform publishes
+  (`.tar.xz` / `.zip`,`.msi`,`.msix` / `.dmg`).
+- **CLI Options:** `--os/-o` (defaults to the detected platform), `--branch/-b`
+  (branch filter, defaulting to the GUI's saved selection) and `--keep/-k`
+  (how many builds `--cleanup` retains).
 - **Branch Filter Dropdown:** A dropdown overlaid on the bottom of the splash banner lets users limit the list to a single branch (stable/beta/alpha/etc.) or show "All Branches". Selection is persisted in settings and the branch set is discovered dynamically from the scraped page.
 - **Branch Accent Colors:** Build rows now carry a colored left strip matching the Blender website conventions — green for stable, yellow for beta, red for alpha (plus candidate/patch). A matching `.badge-stable` style was added.
 - **Filename-Based Branch Inference:** Local archives found on disk now have their branch inferred from the filename instead of defaulting to "alpha", which was incorrect for most downloads.
@@ -15,11 +25,46 @@ All notable changes to this project will be documented in this file.
 - **CLI Enhancements:** Updated the `cli/blenderlatest.py` script to use the same scraping and sorting improvements as the GUI.
 
 ### Fixed
+- **Build List Never Loading:** `core.detect_os()` used `sys` without importing
+  it, and `scrape_daily_builds()` named its parameter `filter_os` while every
+  caller passed `os_filter`. The GUI's loader died on the background loop and the
+  spinner spun forever. `scrape_daily_builds()` now takes `os_filter`, including
+  an iterable of OS names.
+- **Local Branch Filter:** `find_local_builds()` raised `TypeError` whenever a
+  list `filter_build_type` *matched* an archive instead of keeping it.
+- **Duplicate Scraped Builds:** The builder page links each archive from
+  several buttons, so `scrape_daily_builds()` returned every build about three
+  times. It now skips URLs it has already seen.
+- **Silent Async Failures:** `AsyncBridge.run()` now prints the traceback of any
+  task that raises, so a failure no longer looks like a hang.
 - **Scraping Logic:** Refined the BeautifulSoup selectors to handle the current structure of the Blender daily builds page.
 - **Build Sorting:** Resolved an issue where versions appeared out of order due to relying on filenames and hashes alone.
 - **Auto-Cleanup Sorting:** Corrected the auto-cleanup mechanism to use the new release date sort order.
 
 ### Changed
+- **Security Updates:** Upgraded `aiohttp` 3.13.3 → 3.14.3, `lxml` 6.0.2 → 6.1.3,
+  `soupsieve` 2.8.3 → 2.9.2 and `idna` 3.11 → 3.19 to clear all 28 open
+  Dependabot alerts; the `aiohttp` and `lxml` minimums in `pyproject.toml` now
+  exclude the vulnerable releases.
+- **Project Layout:** Sources moved to `src/blenderlauncher/`, icons to `icons/`,
+  and helper scripts to `scripts/`; the old `cli/blenderlatest.py` is replaced by
+  the `blenderlauncher-cli` entry point.
+- **README:** Added main-window and Preferences screenshots, fixed paths for the
+  moved icon and scripts, and documented the girepository build dependency.
+- **CLI Rewritten on `core`:** `blenderlauncher/cli.py` (moved from
+  `cli/blenderlatest.py`) is now a thin front-end over the same `core` routines
+  the GTK app uses — scrape, merge with local builds, download, extract, launch —
+  instead of carrying its own duplicated copy of that logic, and it reads its
+  defaults from the shared `settings` file. Its progress output is core's
+  progress callback rendered as a terminal progress bar with an ETA.
+- **CLI `--last/-l` Semantics:** the index now refers to the merged
+  remote+local list that `--show/-s` prints, and no longer implies
+  `--no-download`; skipped-over builds are downloaded on demand. `--cleanup`
+  keeps the newest `--keep` builds (as the GUI's auto-cleanup does) rather than
+  deleting every older one, and never deletes the build it just launched.
+- **Archive Path Handling:** `core.archive_extract_path()` strips a known
+  archive suffix instead of chopping the last two path suffixes, which was
+  fragile for filenames containing dots.
 - **Dynamic Branch Scraping:** `scrape_daily_builds` now discovers the branch type from each link's `plausible-event-build=<X>` class rather than iterating a hardcoded list, so new branches on the builder page appear automatically.
 - **Archive Extraction:** The extraction process now copies the release date metadata into the extracted folder.
 - **GUI Updates:** The build rows now display the release date alongside the status text.

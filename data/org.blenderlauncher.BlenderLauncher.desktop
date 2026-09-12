@@ -1,7 +1,7 @@
 [Desktop Entry]
 Name=Blender Launcher
 Comment=Download, unpack and launch Blender daily builds
-Exec=blenderlauncher
+Exec=blenderlauncher-gui
 Icon=org.blenderlauncher.BlenderLauncher
 Terminal=false
 Type=Application

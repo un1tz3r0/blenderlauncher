@@ -3,11 +3,19 @@
 # Requires: flatpak-builder, org.gnome.Sdk//48, org.gnome.Platform//48
 #
 # Usage:
-#   ./build-flatpak.sh              # build only
-#   ./build-flatpak.sh --install    # build and install for current user
-#   ./build-flatpak.sh --run        # build, install, and run
+#   ./scripts/build-flatpak.sh              # build only
+#   ./scripts/build-flatpak.sh --install    # build and install for current user
+#   ./scripts/build-flatpak.sh --run        # build, install, and run
 
 set -e
+
+SCRIPT_DIR="$(dirname "$(realpath "$0")")"
+if [[ "$(basename "${SCRIPT_DIR}")" == "scripts" ]]; then
+    PROJECT_DIR="$(dirname "${SCRIPT_DIR}")"
+else
+    PROJECT_DIR="${SCRIPT_DIR}"
+fi
+cd "$PROJECT_DIR"
 
 APP_ID="org.blenderlauncher.BlenderLauncher"
 MANIFEST="$APP_ID.yml"

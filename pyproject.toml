@@ -4,25 +4,28 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "blenderlauncher"
-version = "0.1.0"
+version = "0.2.1"
 description = "GTK4/Adwaita GUI for downloading and launching Blender daily builds"
 requires-python = ">=3.11"
 dependencies = [
     "aiohttp>=3.14.3",
     "aiofiles>=23.0",
     "beautifulsoup4>=4.12",
-    "lxml>=5.0",
+    "soupsieve>=2.8.4",
+    "lxml>=6.1.0",
     "yarl>=1.9",
+    "idna>=3.14",
     "PyGObject>=3.46",
 ]
 
 [project.scripts]
-blenderlauncher = "blenderlauncher.__main__:main"
+blenderlauncher-cli = "blenderlauncher.cli:main"
 
 [project.gui-scripts]
 blenderlauncher-gui = "blenderlauncher.__main__:main"
 
 [tool.setuptools.packages.find]
+where = ["src"]
 include = ["blenderlauncher*"]
 
 [tool.setuptools.package-data]

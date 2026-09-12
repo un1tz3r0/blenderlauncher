@@ -3,6 +3,7 @@ import datetime
 import pathlib
 import threading
 import time
+import traceback
 
 import gi
 
@@ -50,8 +51,20 @@ class AsyncBridge:
         self.loop.run_forever()
 
     def run(self, coro):
-        """Submit a coroutine, returns a concurrent.futures.Future."""
-        return asyncio.run_coroutine_threadsafe(coro, self.loop)
+        """Submit a coroutine, returns a concurrent.futures.Future.
+
+        Callers mostly fire-and-forget, so any uncaught exception is printed here
+        rather than vanishing silently inside the unobserved future."""
+        future = asyncio.run_coroutine_threadsafe(coro, self.loop)
+        future.add_done_callback(self._report_exception)
+        return future
+
+    @staticmethod
+    def _report_exception(future):
+        if future.cancelled() or future.exception() is None:
+            return
+        exc = future.exception()
+        traceback.print_exception(type(exc), exc, exc.__traceback__)
 
 
 class BuildRow(Gtk.Box):
@@ -215,7 +228,7 @@ class PreferencesDialog(Adw.PreferencesWindow):
     def __init__(self, current_settings, on_save, **kwargs):
         super().__init__(**kwargs)
         self.set_title("Preferences")
-        self.set_default_size(450, 350)
+        self.set_default_size(450, 650)
         self._settings = dict(current_settings)
         self._on_save = on_save
 
@@ -374,13 +387,14 @@ class BlenderLauncherWindow(Adw.ApplicationWindow):
 
     async def _async_load_builds(self):
         download_dir = self.config["download_dir"]
+        os_filter = self.config.get("filter_os") or core.detect_os()
 
         # get local builds (fast, synchronous)
-        local_builds = core.find_local_builds(download_dir)
+        local_builds = core.find_local_builds(download_dir, os_filter=os_filter)
 
         # try to get remote builds
         try:
-            remote_builds = await core.scrape_daily_builds()
+            remote_builds = await core.scrape_daily_builds(os_filter=os_filter)
         except Exception as e:
             remote_builds = []
             GLib.idle_add(self._show_toast, f"Could not fetch remote builds: {e}")
@@ -586,7 +600,7 @@ class BlenderLauncherWindow(Adw.ApplicationWindow):
                 except Exception:
                     if not row.build.date:
                         row.build.date = datetime.datetime.now()
-                
+
                 GLib.idle_add(row.refresh)
                 # proceed to extract
                 GLib.idle_add(self._extract_and_launch, row)
@@ -602,7 +616,10 @@ class BlenderLauncherWindow(Adw.ApplicationWindow):
             return
         keep = self.config["keep_versions"]
         # get current local builds sorted newest first
-        local = core.find_local_builds(self.config["download_dir"])
+        local = core.find_local_builds(
+            self.config["download_dir"],
+            os_filter=self.config.get("filter_os") or core.detect_os(),
+        )
         sorted_builds = sorted(
             local.values(), key=lambda b: b.sort_key, reverse=True
         )
