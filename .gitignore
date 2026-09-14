@@ -7,3 +7,5 @@ flatpak-repo
 flatpak-build
 *.egg-info/
 .venv/
+flatpak-requirements.txt
+*.flatpak

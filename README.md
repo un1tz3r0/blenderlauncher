@@ -64,7 +64,7 @@ pip install .
 
 ### Flatpak
 
-You can build a flatpak package that can be installed with `flatpak install` using the `scripts/build-flatpak.sh` script.
+You can build a flatpak package that can be installed with `flatpak install` using the `scripts/build-flatpak.sh` script. It needs `flatpak-builder` and `uv`; the GNOME runtime and SDK named in the manifest are installed automatically, and the Python dependencies are the exact versions pinned in `uv.lock`.
 
 ```bash
 bash scripts/build-flatpak.sh
@@ -97,7 +97,8 @@ blenderlauncher-cli --cleanup --keep 3
 The platform whose builds are considered is detected from the system you are
 running on; override it with `--os linux|macos|windows` (extraction and launch
 currently only support the Linux `.tar.xz` builds) or by setting `filter_os` in
-`~/.config/blenderlauncher/settings.json`. Run `blenderlauncher-cli --help` for
+`$XDG_CONFIG_HOME/blenderlauncher/settings.json` (normally
+`~/.config/blenderlauncher/settings.json`). Run `blenderlauncher-cli --help` for
 the full list of options.
 
 From a source checkout without installing, use
@@ -113,7 +114,10 @@ Preferences can be adjusted within the GUI, including:
 ![The Preferences window: download directory, auto-cleanup toggle and number of versions to keep](doc/prefs.png)
 
 The branch selection and platform override are stored alongside these in
-`~/.config/blenderlauncher/settings.json`.
+`$XDG_CONFIG_HOME/blenderlauncher/settings.json` (normally
+`~/.config/blenderlauncher/settings.json`). The Flatpak reads and writes the
+same `~/.config` file, so it shares settings with a host install of the CLI.
+The download directory defaults to your desktop's Downloads folder.
 
 ## License
 
