@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Consistency Tests:** `tests/test_consistency.py` (run with `uv run pytest`)
+  checks that the desktop entry, AppStream metainfo, Flatpak manifest,
+  `pyproject.toml` and the package agree on app id, name, summary, GUI command,
+  version and the config-directory permission, and that settings defaults are
+  not repeated at call sites. `pytest` and `pyyaml` are dev dependencies.
+- **Installed Icon Sizes:** The pre-rendered 32–256px PNGs from `icons/` are now
+  installed into the hicolor theme alongside the scalable icon.
 - **Platform Detection:** `core.detect_os()` maps the running platform onto the
   builder page's OS names (`linux`/`macos`/`windows`), and both front-ends now
   use it as the default OS filter instead of assuming Linux. A `filter_os`
@@ -25,6 +32,17 @@ All notable changes to this project will be documented in this file.
 - **CLI Enhancements:** Updated the `cli/blenderlatest.py` script to use the same scraping and sorting improvements as the GUI.
 
 ### Fixed
+- **Stale Version:** `blenderlauncher.__version__` said 0.1.0 while the package
+  was 0.2.1; it is now read from the installed package metadata.
+- **XDG Directories:** Settings live in `$XDG_CONFIG_HOME/blenderlauncher`
+  instead of always `~/.config` (the Flatpak keeps using the host `~/.config`
+  so it still shares settings with the CLI), and the default download directory
+  is the desktop's localized Downloads folder instead of `~/Downloads`.
+- **Flatpak Missing lxml:** pip skipped `lxml` during the Flatpak build because
+  the GNOME SDK ships its own copy, but the Platform runtime does not, so the
+  installed app had no lxml parser. Dependencies are now installed with
+  `--ignore-installed`, which also lets the `lxml>=6.1.0` security minimum
+  build again (it previously failed trying to upgrade lxml without network).
 - **Build List Never Loading:** `core.detect_os()` used `sys` without importing
   it, and `scrape_daily_builds()` named its parameter `filter_os` while every
   caller passed `os_filter`. The GUI's loader died on the background loop and the
@@ -42,6 +60,23 @@ All notable changes to this project will be documented in this file.
 - **Auto-Cleanup Sorting:** Corrected the auto-cleanup mechanism to use the new release date sort order.
 
 ### Changed
+- **Single Source of Truth:** App name and summary are `APP_NAME`/`APP_SUMMARY`
+  in `blenderlauncher/__init__.py`; the GUI uses them and `APP_ID` instead of
+  string literals. The CLI and GUI index `settings.load()` directly instead of
+  repeating defaults, and the CLI's program name comes from its entry point.
+  The desktop entry's Comment now matches the AppStream summary.
+- **Shared Install Scripts:** `scripts/common.sh` holds the project-root and
+  manifest-reading code used by all scripts; `scripts/install-data.sh` is the
+  one list of installed desktop/metainfo/icon files, used by the Flatpak
+  manifest and `install-desktop.sh`. The duplicate SVG in `data/icons` was removed;
+  the scalable icon is now installed from `icons/blenderlauncher_large.svg`.
+- **Flatpak Runtime:** Moved the Flatpak from the end-of-life GNOME 48 runtime
+  (unsupported since 2026-03-24) to GNOME 50. `scripts/build-flatpak.sh` now
+  reads the manifest, app id, runtime and SDK from the manifest instead of
+  hard-coding them, and the manifest uses `${FLATPAK_ID}` for installed files.
+- **Flatpak Dependencies:** The manifest no longer keeps its own list of Python
+  packages; `build-flatpak.sh` exports `uv.lock` to `flatpak-requirements.txt`
+  and the build installs exactly those pinned, hash-checked versions.
 - **Security Updates:** Upgraded `aiohttp` 3.13.3 → 3.14.3, `lxml` 6.0.2 → 6.1.3,
   `soupsieve` 2.8.3 → 2.9.2 and `idna` 3.11 → 3.19 to clear all 28 open
   Dependabot alerts; the `aiohttp` and `lxml` minimums in `pyproject.toml` now

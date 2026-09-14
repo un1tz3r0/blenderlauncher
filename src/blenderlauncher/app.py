@@ -12,7 +12,7 @@ gi.require_version("Adw", "1")
 
 from gi.repository import Adw, Gio, GLib, Gtk, Pango, Gdk
 
-from . import APP_ID, core, settings
+from . import APP_ID, APP_NAME, APP_SUMMARY, core, settings
 
 STYLE_CSS = pathlib.Path(__file__).parent / "style.css"
 
@@ -288,7 +288,7 @@ class BlenderLauncherWindow(Adw.ApplicationWindow):
         super().__init__(application=app)
         self.bridge = bridge
         self.config = settings.load()
-        self.set_title("Blender Launcher")
+        self.set_title(APP_NAME)
         self.set_default_size(700, 600)
 
         # toast overlay wraps everything for notifications
@@ -317,9 +317,9 @@ class BlenderLauncherWindow(Adw.ApplicationWindow):
 
         # banner / splash area with an overlaid branch filter bar along its bottom
         self.banner = Adw.StatusPage()
-        self.banner.set_icon_name("org.blenderlauncher.BlenderLauncher")
-        self.banner.set_title("Blender Launcher")
-        self.banner.set_description("Download and launch Blender daily builds")
+        self.banner.set_icon_name(APP_ID)
+        self.banner.set_title(APP_NAME)
+        self.banner.set_description(APP_SUMMARY)
         self.banner.set_vexpand(False)
         self.banner.set_valign(Gtk.Align.START)
         self.banner.add_css_class("splash-banner")
@@ -332,7 +332,7 @@ class BlenderLauncherWindow(Adw.ApplicationWindow):
         self._filter_action = Gio.SimpleAction.new_stateful(
             "branch-filter",
             GLib.VariantType.new("s"),
-            GLib.Variant.new_string(self.config.get("branch_filter", "all")),
+            GLib.Variant.new_string(self.config["branch_filter"]),
         )
         self._filter_action.connect("change-state", self._on_branch_filter_changed)
         self.add_action(self._filter_action)
@@ -387,7 +387,7 @@ class BlenderLauncherWindow(Adw.ApplicationWindow):
 
     async def _async_load_builds(self):
         download_dir = self.config["download_dir"]
-        os_filter = self.config.get("filter_os") or core.detect_os()
+        os_filter = self.config["filter_os"] or core.detect_os()
 
         # get local builds (fast, synchronous)
         local_builds = core.find_local_builds(download_dir, os_filter=os_filter)
@@ -421,7 +421,7 @@ class BlenderLauncherWindow(Adw.ApplicationWindow):
             self.list_box.remove(row)
         self._build_rows.clear()
 
-        selected = self.config.get("branch_filter", "all")
+        selected = self.config["branch_filter"]
         if selected == "all":
             visible = list(self._all_builds)
         else:
@@ -461,7 +461,7 @@ class BlenderLauncherWindow(Adw.ApplicationWindow):
         self._update_filter_button_label()
 
     def _update_filter_button_label(self):
-        selected = self.config.get("branch_filter", "all")
+        selected = self.config["branch_filter"]
         label = "All Branches" if selected == "all" else selected.capitalize()
         self._filter_button.set_label(label)
 
@@ -618,7 +618,7 @@ class BlenderLauncherWindow(Adw.ApplicationWindow):
         # get current local builds sorted newest first
         local = core.find_local_builds(
             self.config["download_dir"],
-            os_filter=self.config.get("filter_os") or core.detect_os(),
+            os_filter=self.config["filter_os"] or core.detect_os(),
         )
         sorted_builds = sorted(
             local.values(), key=lambda b: b.sort_key, reverse=True
