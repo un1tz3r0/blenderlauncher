@@ -73,7 +73,8 @@ All notable changes to this project will be documented in this file.
 - **Flatpak Runtime:** Moved the Flatpak from the end-of-life GNOME 48 runtime
   (unsupported since 2026-03-24) to GNOME 50. `scripts/build-flatpak.sh` now
   reads the manifest, app id, runtime and SDK from the manifest instead of
-  hard-coding them, and the manifest uses `${FLATPAK_ID}` for installed files.
+  hard-coding them, and the manifest now reuses `scripts/install-data.sh /app/share`
+  for installed files.
 - **Flatpak Dependencies:** The manifest no longer keeps its own list of Python
   packages; `build-flatpak.sh` exports `uv.lock` to `flatpak-requirements.txt`
   and the build installs exactly those pinned, hash-checked versions.

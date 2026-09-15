@@ -31,7 +31,7 @@ done
 # the manifest installs Python deps from uv.lock rather than keeping its own list
 echo "Exporting locked Python dependencies ..."
 uv export --locked --no-dev --format requirements.txt --no-emit-project \
-    --prune pygobject --no-header --no-annotate --output-file "$REQUIREMENTS"
+    --no-emit-package pygobject --no-header --no-annotate --output-file "$REQUIREMENTS"
 
 echo "Building Flatpak ..."
 flatpak-builder --force-clean "$BUILD_DIR" "$MANIFEST" --repo="$REPO_DIR"

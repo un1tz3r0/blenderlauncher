@@ -17,6 +17,8 @@ finish-args:
   - --filesystem=xdg-download
   # access to config directory
   - --filesystem=xdg-config/blenderlauncher:create
+  # access to the host XDG user-dirs metadata
+  - --filesystem=xdg-config/user-dirs.dirs:ro
   # allow launching Blender as a subprocess
   - --talk-name=org.freedesktop.Flatpak
 
