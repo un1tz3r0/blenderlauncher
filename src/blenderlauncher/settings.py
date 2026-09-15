@@ -29,8 +29,11 @@ def _user_dirs_download_dir():
         return None
     for line in lines:
         if line.startswith("XDG_DOWNLOAD_DIR="):
-            value = shlex.split(line.split("=", 1)[1])[0]
-            return os.path.expandvars(value)
+            try:
+                values = shlex.split(line.split("=", 1)[1])
+            except ValueError:
+                return None
+            return os.path.expandvars(values[0]) if values else None
     return None
 
 
