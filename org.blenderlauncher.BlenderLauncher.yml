@@ -1,6 +1,6 @@
 app-id: org.blenderlauncher.BlenderLauncher
 runtime: org.gnome.Platform
-runtime-version: '48'
+runtime-version: '50'
 sdk: org.gnome.Sdk
 command: blenderlauncher-gui
 
@@ -17,31 +17,33 @@ finish-args:
   - --filesystem=xdg-download
   # access to config directory
   - --filesystem=xdg-config/blenderlauncher:create
+  # access to the host XDG user-dirs metadata
+  - --filesystem=xdg-config/user-dirs.dirs:ro
   # allow launching Blender as a subprocess
   - --talk-name=org.freedesktop.Flatpak
 
 modules:
-  # all Python dependencies, installed via pip from PyPI at build time
+  # third-party Python dependencies, pinned by uv.lock. build-flatpak.sh exports
+  # the lockfile to flatpak-requirements.txt (PyGObject is pruned: the runtime
+  # provides it). --ignore-installed stops pip from skipping packages the SDK
+  # happens to ship (e.g. lxml) but the Platform runtime does not.
   - name: python-deps
     buildsystem: simple
     build-options:
       build-args:
         - --share=network
     build-commands:
-      - pip3 install --no-build-isolation --prefix=/app
-        aiohttp aiofiles beautifulsoup4 lxml yarl
-    sources: []
+      - pip3 install --prefix=/app --ignore-installed --require-hashes
+        -r flatpak-requirements.txt
+    sources:
+      - type: file
+        path: flatpak-requirements.txt
 
   - name: blenderlauncher
     buildsystem: simple
     build-commands:
-      - pip3 install --no-build-isolation --prefix=/app .
-      - install -Dm644 data/org.blenderlauncher.BlenderLauncher.desktop
-        /app/share/applications/org.blenderlauncher.BlenderLauncher.desktop
-      - install -Dm644 data/org.blenderlauncher.BlenderLauncher.metainfo.xml
-        /app/share/metainfo/org.blenderlauncher.BlenderLauncher.metainfo.xml
-      - install -Dm644 data/icons/hicolor/scalable/apps/org.blenderlauncher.BlenderLauncher.svg
-        /app/share/icons/hicolor/scalable/apps/org.blenderlauncher.BlenderLauncher.svg
+      - pip3 install --no-deps --no-build-isolation --prefix=/app .
+      - scripts/install-data.sh /app/share
     sources:
       - type: dir
         path: .

@@ -14,7 +14,20 @@ To set up a local development environment:
 
 1.  Install `uv` (recommended).
 2.  Run `uv sync` to install dependencies.
-3.  Launch the application using `uv run blenderlauncher`.
+3.  Launch the application using `uv run blenderlauncher-gui`.
+4.  Run the tests with `uv run pytest`.
+
+## Single Source of Truth
+
+Each value should be defined in one place and derived everywhere else:
+
+- **Version:** `pyproject.toml` (`blenderlauncher.__version__` reads the installed metadata).
+- **Python dependencies:** `pyproject.toml` / `uv.lock` (the Flatpak build exports the lockfile).
+- **App ID, runtime and SDK:** the Flatpak manifest (the scripts read it via `scripts/common.sh`).
+- **Installed desktop files and icons:** `scripts/install-data.sh`, used by both the manifest and `install-desktop.sh`.
+- **Settings defaults:** `settings.DEFAULTS`; `settings.load()` fills in every key, so don't repeat defaults with `.get()`.
+
+Some files can't import Python, such as the `.desktop` entry, the AppStream metainfo and the manifest. They repeat the app ID, name, summary and GUI command, and `tests/test_consistency.py` fails if these copies disagree with `blenderlauncher.APP_ID`, `APP_NAME`, `APP_SUMMARY` or `pyproject.toml`.
 
 ## Coding Standards
 

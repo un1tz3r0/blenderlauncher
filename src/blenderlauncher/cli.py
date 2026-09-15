@@ -185,10 +185,9 @@ async def run_blender(extract_path, build_os=None):
 
 
 def build_parser(config):
-    default_os = core.normalize_supported_os_filter(config.get("filter_os"))
+    default_os = core.normalize_supported_os_filter(config["filter_os"])
 
     parser = argparse.ArgumentParser(
-        prog="blenderlauncher-cli",
         description=(
             "Download and/or launch the latest daily build of Blender from "
             "blender.org."
@@ -214,7 +213,7 @@ def build_parser(config):
     parser.add_argument(
         "-b",
         "--branch",
-        default=config.get("branch_filter", "all"),
+        default=config["branch_filter"],
         help='Only consider this branch (stable/candidate/beta/alpha/...), or "all" (default: %(default)s)',
     )
     parser.add_argument(
@@ -239,7 +238,7 @@ def build_parser(config):
         "-k",
         "--keep",
         type=int,
-        default=config.get("keep_versions", 3),
+        default=config["keep_versions"],
         help="How many local builds --cleanup keeps (default: %(default)s)",
     )
     parser.add_argument(

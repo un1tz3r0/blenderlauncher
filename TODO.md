@@ -30,3 +30,17 @@
       `--os windows|macos` can list and download but not extract/launch
 - [ ] arch filter (`x86_64` vs `arm64`) — windows/macos publish several
       archives per build, currently disambiguated only in `--show` output
+
+## Single source of truth (DRY) pass
+
+- [x] `__version__` from package metadata instead of a literal
+- [x] settings: drop `.get(key, default)` fallbacks that duplicate `DEFAULTS`
+- [x] `APP_NAME` / `APP_SUMMARY` constants; app.py uses them and `APP_ID` for the icon
+- [x] cli: drop hard-coded `prog=`
+- [x] settings: XDG config dir (shared `~/.config` inside Flatpak) and XDG Downloads default
+- [x] scripts: shared `common.sh` (project root + manifest reader) and
+      `install-data.sh` used by both the manifest and `install-desktop.sh`
+- [x] icons: drop the duplicated SVG in `data/icons`, install from `icons/`
+      (plus the pre-rendered PNG sizes)
+- [x] tests/test_consistency.py: metadata that cannot be derived must agree
+- [x] rebuild + reinstall Flatpak, run tests, CHANGELOG/README
