@@ -80,8 +80,10 @@ def test_license(pyproject, metainfo):
 
 
 def test_flatpak_config_permission_matches_settings(manifest):
-    # settings.config_dir() relies on this permission inside the Flatpak
+    # settings.config_dir() and settings.default_download_dir() rely on these
+    # permissions inside the Flatpak.
     assert f"--filesystem=xdg-config/{settings.CONFIG_DIR.name}:create" in manifest["finish-args"]
+    assert "--filesystem=xdg-config/user-dirs.dirs:ro" in manifest["finish-args"]
 
 
 def test_flatpak_installs_locked_dependencies(manifest):
@@ -124,3 +126,14 @@ def test_config_dir_shared_with_host_in_flatpak(monkeypatch, tmp_path):
     monkeypatch.setenv("FLATPAK_ID", APP_ID)
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     assert settings.config_dir() == pathlib.Path.home() / ".config" / "blenderlauncher"
+
+
+def test_default_download_dir_shared_with_host_in_flatpak(monkeypatch, tmp_path):
+    home = tmp_path / "home"
+    config_home = home / ".config"
+    config_home.mkdir(parents=True)
+    (config_home / "user-dirs.dirs").write_text('XDG_DOWNLOAD_DIR="$HOME/Téléchargements"\n')
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("FLATPAK_ID", APP_ID)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "flatpak-config"))
+    assert settings.default_download_dir() == "~/Téléchargements"
