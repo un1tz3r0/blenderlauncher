@@ -1,13 +1,6 @@
 """Blender Launcher - GTK4/Adwaita GUI for Blender daily builds."""
 
-import importlib.metadata
-
-try:
-    __version__ = importlib.metadata.version(__name__)
-except importlib.metadata.PackageNotFoundError:
-    # running from a source tree that was never installed (PYTHONPATH=src)
-    __version__ = "0+unknown"
-
+__version__ = "0.2.1"
 # Identity shared by the GUI, the desktop entry, the AppStream metainfo and the
 # Flatpak manifest. Those files cannot import Python, so tests/test_consistency.py
 # checks that they agree with these values.

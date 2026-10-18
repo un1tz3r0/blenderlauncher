@@ -4,7 +4,11 @@
 set -e
 source "$(dirname "$(realpath "$0")")/common.sh"
 
-pip3 install -e . --break-system-packages
+PIP_INSTALL_ARGS=(-e .)
+if [[ "${BLENDERLAUNCHER_BREAK_SYSTEM_PACKAGES:-0}" == "1" ]]; then
+  PIP_INSTALL_ARGS+=(--break-system-packages)
+fi
+pip3 install "${PIP_INSTALL_ARGS[@]}"
 
 PREFIX="${XDG_DATA_HOME:-$HOME/.local/share}"
 scripts/install-data.sh "$PREFIX"
