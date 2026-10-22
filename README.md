@@ -70,6 +70,10 @@ You can build a flatpak package that can be installed with `flatpak install` usi
 bash scripts/build-flatpak.sh
 ```
 
+### CI and Releases
+
+GitHub Actions runs the tests and builds a Python wheel and Flatpak bundle for pushes and pull requests. To publish a GitHub release with both installable packages attached, push a version tag matching `pyproject.toml` (for example, `v0.2.1`).
+
 ## Usage
 
 ### GUI
